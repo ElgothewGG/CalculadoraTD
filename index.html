@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0A0A0A">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Two Dreamers — Precificação</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    /* =========================================
+       VARIÁVEIS E RESET
+    ========================================= */
+    :root {
+      --bg:       #0A0A0A;
+      --bg2:      #141414;
+      --bg3:      #1C1C1C;
+      --bg4:      #242424;
+      --gold:     #C9A227;
+      --gold-low: rgba(201,162,39,0.12);
+      --gold-mid: rgba(201,162,39,0.25);
+      --text:     #F5F1E8;
+      --muted:    rgba(245,241,232,0.55);
+      --success:  #4F7B5B;
+      --danger:   #B03020;
+      --radius:   14px;
+      --max:      560px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+      min-height: 100dvh;
+      max-width: var(--max);
+      margin: 0 auto;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* =========================================
+       NAVEGAÇÃO (4 ABAS FIXAS NO TOPO)
+    ========================================= */
+    #nav {
+      position: fixed;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 100%; max-width: var(--max);
+      background: var(--bg);
+      border-bottom: 1px solid var(--gold-mid);
+      display: flex;
+      z-index: 200;
+      padding-top: env(safe-area-inset-top);
+    }
+
+    .nav-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 10px 4px 9px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 10.5px;
+      cursor: pointer;
+      position: relative;
+      transition: color .2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .nav-btn .ic { font-size: 20px; line-height: 1; }
+
+    .nav-btn.active {
+      color: var(--gold);
+    }
+
+    .nav-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 12%; width: 76%; height: 2px;
+      background: var(--gold);
+      border-radius: 2px 2px 0 0;
+    }
+
+    .nav-badge {
+      position: absolute;
+      top: 7px; right: calc(50% - 18px);
+      background: var(--gold);
+      color: #000;
+      font-size: 9px; font-weight: 700;
+      min-width: 15px; height: 15px;
+      border-radius: 8px;
+      display: none;
+      align-items: center; justify-content: center;
+      padding: 0 3px;
+    }
+
+    /* =========================================
+       CONTEÚDO PRINCIPAL
+    ========================================= */
+    #main {
+      padding-top: calc(env(safe-area-inset-top) + 60px);
+      padding-bottom: 90px;
+    }
+
+    .tab { display: none; padding: 16px 15px; }
+    .tab.active { display: block; }
+
+    /* =========================================
+       CARDS
+    ========================================= */
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--gold-low);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 16px rgba(0,0,0,.5);
+    }
+
+    .card-title {
+      font-family: Georgia, 'Times New Roman', serif;
+      font-size: 15px;
+      color: var(--gold);
+      font-weight: normal;
+      margin-bottom: 14px;
+    }
+
+    .section-label {
+      font-family: Georgia, serif;
+      font-size: 14px;
+      color: var(--gold);
+      font-weight: normal;
+      margin-bottom: 10px;
+    }
+
+    /* =========================================
+       BOTÕES
+    ========================================= */
+    .btn {
+      display: inline-flex;
+      align-items: center; justify-content: center;
+      gap: 6px;
+      min-height: 50px;
+      padding: 12px 18px;
+      border: none;
+      border-radius: 11px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      -webkit-tap-highlight-color: transparent;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn:active { opacity: .78; transform: scale(.97); }
+
+    .btn-primary  { background: var(--gold); color: #000; }
+    .btn-success  { background: var(--success); color: #fff; }
+    .btn-danger   { background: var(--danger); color: #fff; }
+    .btn-outline  { background: transparent; color: var(--gold); border: 1.5px solid var(--gold); }
+    .btn-ghost    { background: rgba(255,255,255,.06); color: var(--text); }
+    .btn-full     { width: 100%; }
+    .btn-sm       { min-height: 36px; padding: 5px 13px; font-size: 13px; }
+
+    /* =========================================
+       FORMULÁRIOS
+    ========================================= */
+    .fgroup { margin-bottom: 14px; }
+
+    label {
+      display: block;
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--gold-mid);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 16px;
+      padding: 12px 14px;
+      outline: none;
+      -webkit-appearance: none;
+      transition: border-color .2s;
+    }
+
+    input:focus, select:focus { border-color: var(--gold); }
+    input[disabled] { opacity: .45; }
+
+    input[type="range"] {
+      width: 100%;
+      height: 4px;
+      -webkit-appearance: none;
+      background: var(--bg3);
+      border-radius: 2px;
+      border: none;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: var(--gold);
+      cursor: pointer;
+      box-shadow: 0 0 0 3px rgba(201,162,39,.25);
+    }
+
+    .range-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .range-val {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--gold);
+    }
+
+    /* SEGMENTED CONTROL */
+    .seg {
+      display: flex;
+      background: var(--bg3);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 3px;
+    }
+
+    .seg button {
+      flex: 1;
+      padding: 10px 6px;
+      border: none;
+      border-radius: 8px;
+      background: none;
+      color: var(--muted);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all .2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .seg button.active { background: var(--gold); color: #000; font-weight: 600; }
+
+    /* TOGGLE SWITCH */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .toggle-row span { font-size: 14.5px; flex: 1; }
+
+    .toggle {
+      position: relative;
+      width: 50px; height: 28px;
+      flex-shrink: 0;
+    }
+
+    .toggle input { opacity: 0; width: 0; height: 0; }
+
+    .tslider {
+      position: absolute;
+      inset: 0;
+      background: var(--bg4);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: background .2s;
+      border: 1px solid rgba(255,255,255,.08);
+    }
+
+    .tslider::before {
+      content: '';
+      position: absolute;
+      width: 22px; height: 22px;
+      left: 3px; top: 2px;
+      background: var(--muted);
+      border-radius: 50%;
+      transition: .2s;
+    }
+
+    .toggle input:checked + .tslider { background: var(--gold); }
+    .toggle input:checked + .tslider::before { transform: translateX(21px); background: #000; }
+
+    /* =========================================
+       MODELOS (scroll horizontal)
+    ========================================= */
+    #models-scroll {
+      display: flex;
+      gap: 11px;
+      overflow-x: auto;
+      padding-bottom: 10px;
+      scrollbar-width: none;
+      margin-bottom: 16px;
+    }
+    #models-scroll::-webkit-scrollbar { display: none; }
+
+    .mcard {
+      flex-shrink: 0;
+      background: var(--bg2);
+      border: 1px solid var(--gold-mid);
+      border-radius: 12px;
+      padding: 12px 14px;
+      min-width: 130px;
+      max-width: 160px;
+      cursor: pointer;
+      position: relative;
+      transition: border-color .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .mcard:active { border-color: var(--gold); }
+
+    .mcard-del {
+      position: absolute;
+      top: 7px; right: 8px;
+      background: none; border: none;
+      color: var(--muted); font-size: 14px;
+      cursor: pointer; padding: 2px;
+    }
+
+    .mcard-name {
+      font-size: 12.5px; font-weight: 600;
+      padding-right: 20px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      margin-bottom: 7px;
+    }
+
+    .mcard-price { font-size: 15px; color: var(--gold); font-weight: 700; }
+
+    /* =========================================
+       LISTA DE SELEÇÃO DE CUSTOS
+    ========================================= */
+    .csel-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 0;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+    }
+    .csel-row:last-child { border-bottom: none; }
+
+    .csel-chk {
+      width: 24px; height: 24px;
+      border-radius: 7px;
+      border: 2px solid var(--gold-mid);
+      background: none;
+      cursor: pointer;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .csel-chk.on { background: var(--gold); border-color: var(--gold); }
+    .csel-chk.on::after { content: '✓'; color: #000; font-size: 13px; font-weight: 800; }
+
+    .csel-info { flex: 1; min-width: 0; }
+    .csel-name { font-size: 14.5px; font-weight: 500; }
+    .csel-sub  { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+    .csel-qty { width: 76px; flex-shrink: 0; }
+    .csel-qty input { padding: 8px 10px; font-size: 15px; text-align: center; }
+
+    .csel-val {
+      font-size: 13px; color: var(--gold);
+      min-width: 72px; text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* =========================================
+       BARRA DE PREÇO (RODAPÉ ABA CALCULAR)
+    ========================================= */
+    #pbar {
+      position: fixed;
+      bottom: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 100%; max-width: var(--max);
+      background: var(--bg2);
+      border-top: 1px solid var(--gold-mid);
+      padding: 11px 15px calc(11px + env(safe-area-inset-bottom));
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 150;
+    }
+
+    #pbar .pi { flex: 1; }
+    #pbar .pl { font-size: 11px; color: var(--muted); }
+    #pbar .pv { font-size: 21px; font-weight: 700; color: var(--gold); }
+
+    /* =========================================
+       MODAIS (BOTTOM SHEETS)
+    ========================================= */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.72);
+      z-index: 300;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .overlay.open { display: flex; }
+
+    .mbox {
+      background: var(--bg2);
+      border-radius: var(--radius) var(--radius) 0 0;
+      border-top: 1px solid var(--gold-mid);
+      width: 100%; max-width: var(--max);
+      max-height: 92dvh;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-bottom: calc(24px + env(safe-area-inset-bottom));
+      animation: suUp .28s ease;
+    }
+
+    @keyframes suUp {
+      from { transform: translateY(100%); }
+      to   { transform: translateY(0); }
+    }
+
+    .mhead {
+      position: sticky; top: 0;
+      background: var(--bg2);
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 15px 18px 13px;
+      border-bottom: 1px solid rgba(255,255,255,.05);
+      z-index: 1;
+    }
+
+    .mhead h2 {
+      font-family: Georgia, serif;
+      font-size: 17px; font-weight: normal;
+      color: var(--gold);
+    }
+
+    .mclose {
+      background: none; border: none;
+      color: var(--muted); font-size: 22px;
+      cursor: pointer; padding: 2px 8px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .mbody { padding: 16px 18px; }
+
+    /* =========================================
+       COLLAPSIBLE
+    ========================================= */
+    .coll-btn {
+      width: 100%; background: none; border: none;
+      color: var(--muted);
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 9px 0; font-size: 13.5px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .coll-body { display: none; }
+    .coll-body.open { display: block; }
+
+    /* =========================================
+       RESULTADO / CARD DE CÁLCULO
+    ========================================= */
+    .rcard {
+      background: var(--bg3);
+      border: 1px solid var(--gold-mid);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .r-main {
+      font-family: Georgia, serif;
+      font-size: 34px;
+      color: var(--gold);
+      text-align: center;
+      font-weight: normal;
+      line-height: 1.1;
+      margin-bottom: 3px;
+    }
+
+    .r-sublabel {
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    .rrow {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 0;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      font-size: 14px;
+    }
+    .rrow:last-child { border-bottom: none; }
+    .rrow .rk { color: var(--muted); }
+    .rrow .rv { font-weight: 600; }
+    .rrow .rv.gold { color: var(--gold); }
+    .rrow .rv.green { color: var(--success); }
+
+    .r-sep {
+      height: 1px;
+      background: var(--gold-mid);
+      margin: 12px 0;
+    }
+
+    .strikethrough {
+      text-decoration: line-through;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* =========================================
+       TABELA COMPARATIVA
+    ========================================= */
+    .ctable {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+      margin-top: 8px;
+    }
+
+    .ctable th {
+      text-align: left; padding: 8px 6px;
+      color: var(--muted); font-weight: 500;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+
+    .ctable td { padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,.03); }
+
+    .ctable tr.hl td {
+      background: rgba(201,162,39,.1);
+      color: var(--gold); font-weight: 600;
+    }
+
+    /* =========================================
+       LISTA DE ITENS (CUSTOS, CLIENTES)
+    ========================================= */
+    .litem {
+      display: flex; align-items: center;
+      padding: 13px 0;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      gap: 10px;
+    }
+    .litem:last-child { border-bottom: none; }
+    .litem-info { flex: 1; }
+    .litem-name { font-size: 15px; font-weight: 500; }
+    .litem-sub  { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+    .litem-acts { display: flex; gap: 6px; }
+
+    /* =========================================
+       CARRINHO
+    ========================================= */
+    .citem {
+      background: var(--bg3);
+      border-radius: 11px;
+      padding: 14px;
+      margin-bottom: 11px;
+    }
+
+    .citem-hd {
+      display: flex; justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 7px;
+    }
+
+    .citem-name { font-size: 15px; font-weight: 600; flex: 1; padding-right: 8px; }
+    .citem-acts { display: flex; gap: 5px; }
+    .citem-meta { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+
+    .citem-price {
+      font-size: 19px; font-weight: 700; color: var(--gold);
+      margin-top: 8px;
+    }
+
+    /* TOTAIS */
+    .tcard {
+      background: var(--bg3);
+      border: 1px solid var(--gold-mid);
+      border-radius: var(--radius);
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+
+    .trow {
+      display: flex; justify-content: space-between;
+      padding: 5px 0; font-size: 14px;
+    }
+
+    .trow .tk { color: var(--muted); }
+
+    .trow.big {
+      font-size: 20px; font-weight: 700; color: var(--gold);
+      padding-top: 12px; margin-top: 6px;
+      border-top: 1px solid var(--gold-mid);
+    }
+
+    /* =========================================
+       CLIENTES
+    ========================================= */
+    .clcard {
+      background: var(--bg2);
+      border: 1px solid var(--gold-low);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .clcard-hd {
+      display: flex; justify-content: space-between;
+      align-items: flex-start; margin-bottom: 7px;
+    }
+
+    .clcard-name { font-size: 16px; font-weight: 600; }
+    .clcard-meta { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+    .clcard-price { font-size: 19px; font-weight: 700; color: var(--gold); margin-top: 7px; }
+    .clcard-acts  { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 11px; }
+
+    /* =========================================
+       PROPOSTA (RESUMO)
+    ========================================= */
+    .sum-brand {
+      font-family: Georgia, serif;
+      font-size: 23px; color: var(--gold);
+      text-align: center;
+      margin-bottom: 4px;
+    }
+
+    .sum-date { font-size: 12.5px; color: var(--muted); text-align: center; margin-bottom: 16px; }
+
+    .sum-item {
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(255,255,255,.05);
+    }
+
+    .sum-iname { font-size: 16px; font-weight: 600; }
+    .sum-itype { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+    .sum-iprice { font-size: 19px; font-weight: 700; color: var(--gold); margin-top: 6px; }
+    .sum-inote { font-size: 12.5px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+
+    .sum-total {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 0 8px;
+      font-size: 21px; font-weight: 700;
+    }
+
+    .sum-pay {
+      background: var(--bg3);
+      border-radius: 10px;
+      padding: 13px 15px;
+      font-size: 13.5px;
+      line-height: 1.85;
+      margin-top: 16px;
+    }
+
+    .sum-footer {
+      margin-top: 14px;
+      font-size: 13.5px; color: var(--muted);
+      line-height: 1.6; font-style: italic;
+    }
+
+    /* =========================================
+       UTILITÁRIOS
+    ========================================= */
+    .empty {
+      text-align: center;
+      padding: 38px 20px;
+      color: var(--muted);
+    }
+    .empty .eic { font-size: 46px; margin-bottom: 11px; }
+    .empty p { font-size: 14.5px; line-height: 1.5; }
+
+    .notice {
+      background: rgba(201,162,39,.07);
+      border: 1px solid rgba(201,162,39,.2);
+      border-radius: 10px;
+      padding: 11px 14px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 13px;
+    }
+    .notice strong { color: var(--gold); }
+
+    .divider { height: 1px; background: rgba(255,255,255,.05); margin: 14px 0; }
+    .gap { height: 12px; }
+    .gap2 { height: 20px; }
+
+    /* TOAST */
+    #toast {
+      position: fixed;
+      bottom: 88px; left: 50%;
+      transform: translateX(-50%) translateY(12px);
+      background: var(--bg3);
+      color: var(--text);
+      border: 1px solid var(--gold-mid);
+      border-radius: 10px;
+      padding: 11px 20px;
+      font-size: 14px;
+      white-space: nowrap;
+      z-index: 999;
+      opacity: 0;
+      transition: all .28s;
+      pointer-events: none;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* GRID 2 cols */
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    /* scrollbar thin */
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-thumb { background: var(--gold-mid); border-radius: 2px; }
+
+    select option { background: var(--bg3); }
+
+    /* Highlight de nota de mídia */
+    .midia-nota {
+      background: rgba(201,162,39,.07);
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+    .midia-nota strong { color: var(--gold); }
+
+    /* Total proposta destaque */
+    .total-prop {
+      background: rgba(201,162,39,.09);
+      border-radius: 10px;
+      padding: 10px 14px;
+      text-align: center;
+      margin-bottom: 12px;
+      display: none;
+    }
+    .total-prop .tpl { font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+    .total-prop .tpv { font-size: 26px; font-weight: 700; color: var(--gold); }
+
+    /* Desconto destaque */
+    .desc-block {
+      text-align: center;
+      margin-bottom: 13px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<!-- =========================================
+     NAVEGAÇÃO
+========================================= -->
+<nav id="nav">
+  <button class="nav-btn active" data-tab="calcular" onclick="switchTab('calcular')">
+    <span class="ic">🧮</span>
+    <span>Calcular</span>
+  </button>
+  <button class="nav-btn" data-tab="custos" onclick="switchTab('custos')">
+    <span class="ic">⚙️</span>
+    <span>Custos</span>
+  </button>
+  <button class="nav-btn" data-tab="pedido" onclick="switchTab('pedido')">
+    <span class="ic">📋</span>
+    <span>Pedido</span>
+    <span class="nav-badge" id="cart-badge">0</span>
+  </button>
+  <button class="nav-btn" data-tab="clientes" onclick="switchTab('clientes')">
+    <span class="ic">👥</span>
+    <span>Clientes</span>
+  </button>
+</nav>
+
+<!-- =========================================
+     CONTEÚDO PRINCIPAL
+========================================= -->
+<div id="main">
+
+  <!-- ===== ABA: CALCULAR ===== -->
+  <div class="tab active" id="tab-calcular">
+    <div class="section-label">⭐ Modelos salvos</div>
+    <div id="models-scroll"></div>
+
+    <div class="card">
+      <div class="card-title">Selecionar itens de custo</div>
+      <div id="csel-list">
+        <div class="empty">
+          <div class="eic">⚙️</div>
+          <p>Nenhum item cadastrado ainda.<br>Vá em <strong>Custos</strong> para começar.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ABA: CUSTOS ===== -->
+  <div class="tab" id="tab-custos">
+    <div class="card">
+      <div class="card-title" id="custo-form-title">Novo item de custo</div>
+
+      <div class="fgroup">
+        <label>Nome do item</label>
+        <input type="text" id="c-nome" placeholder="Ex: Gestor de tráfego, CRM, Designer...">
+      </div>
+
+      <div class="fgroup">
+        <label>Tipo de custo</label>
+        <div class="seg" id="seg-tipo">
+          <button class="active" onclick="setCTipo('hora',this)">R$/hora</button>
+          <button onclick="setCTipo('mes',this)">R$/mês fixo</button>
+        </div>
+        <input type="hidden" id="c-tipo" value="hora">
+      </div>
+
+      <div class="fgroup">
+        <label id="c-valor-lbl">Valor por hora (R$)</label>
+        <input type="number" id="c-valor" placeholder="0,00" min="0" step="0.01">
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary btn-full" onclick="saveCusto()">💾 Salvar item</button>
+        <button class="btn btn-ghost" id="c-cancel" onclick="cancelCEdit()" style="display:none">✖</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Itens cadastrados</div>
+      <div id="custo-list"></div>
+    </div>
+  </div>
+
+  <!-- ===== ABA: PEDIDO ===== -->
+  <div class="tab" id="tab-pedido">
+    <div id="cart-list"></div>
+    <div id="cart-totals"></div>
+    <div id="cart-acts" style="display:none">
+      <button class="btn btn-primary btn-full" onclick="openSummary()" style="margin-bottom:10px">
+        📄 Gerar Resumo da Proposta
+      </button>
+      <button class="btn btn-danger btn-full" onclick="clearCart()">🗑️ Limpar Pedido</button>
+    </div>
+  </div>
+
+  <!-- ===== ABA: CLIENTES ===== -->
+  <div class="tab" id="tab-clientes">
+    <div id="clients-list"></div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- =========================================
+     BARRA DE PREÇO (CALCULAR)
+========================================= -->
+<div id="pbar">
+  <div class="pi">
+    <div class="pl">Preço estimado (50% margem)</div>
+    <div class="pv" id="pbar-val">R$ 0,00</div>
+  </div>
+  <button class="btn btn-primary" onclick="openCalc()">📊 Calcular</button>
+</div>
+
+<!-- =========================================
+     MODAL: PRECIFICAÇÃO
+========================================= -->
+<div class="overlay" id="ov-calc">
+  <div class="mbox">
+    <div class="mhead">
+      <h2>📊 Precificação</h2>
+      <button class="mclose" onclick="closeModal('ov-calc')">✕</button>
+    </div>
+    <div class="mbody">
+
+      <!-- Itens selecionados (colapsável) -->
+      <button class="coll-btn" onclick="toggleColl('coll-items', this)">
+        <span>Ver itens selecionados</span><span>▼</span>
+      </button>
+      <div class="coll-body" id="coll-items">
+        <div id="modal-items"></div>
+        <div class="divider"></div>
+      </div>
+
+      <!-- Tipo de cobrança -->
+      <div class="fgroup">
+        <label>Tipo de cobrança</label>
+        <div class="seg">
+          <button class="active" onclick="setTipoCob('mensal',this)">Mensal (recorrente)</button>
+          <button onclick="setTipoCob('projeto',this)">Projeto único</button>
+        </div>
+        <input type="hidden" id="p-tipo" value="mensal">
+      </div>
+
+      <!-- Meses (só mensal) -->
+      <div class="fgroup" id="p-meses-g">
+        <label>Meses do contrato</label>
+        <input type="number" id="p-meses" value="1" min="1" max="60" oninput="calcPreco()">
+      </div>
+
+      <!-- Margem -->
+      <div class="fgroup">
+        <div class="range-row">
+          <label style="margin:0">Margem desejada</label>
+          <span class="range-val" id="p-margem-d">50%</span>
+        </div>
+        <input type="range" id="p-margem" min="20" max="80" value="50"
+               oninput="updRange('p-margem','p-margem-d','%');calcPreco()">
+      </div>
+
+      <!-- Taxa cartão + Impostos -->
+      <div class="grid2">
+        <div class="fgroup">
+          <label>Taxa cartão (%)</label>
+          <input type="number" id="p-cartao" value="0" min="0" max="20" step="0.1" oninput="calcPreco()">
+        </div>
+        <div class="fgroup">
+          <label>Impostos (%)</label>
+          <input type="number" id="p-imposto" value="0" min="0" max="50" step="0.1" oninput="calcPreco()">
+        </div>
+      </div>
+
+      <!-- Desconto -->
+      <div class="fgroup">
+        <div class="range-row">
+          <label style="margin:0">Desconto</label>
+          <span class="range-val" id="p-desc-d">0%</span>
+        </div>
+        <input type="range" id="p-desc" min="0" max="50" value="0"
+               oninput="updRange('p-desc','p-desc-d','%');calcPreco()">
+      </div>
+
+      <!-- Bloco de mídia paga -->
+      <div class="card" style="margin:14px 0 6px;">
+        <div class="toggle-row">
+          <span>🎯 Cliente roda mídia paga?</span>
+          <label class="toggle">
+            <input type="checkbox" id="p-midia" onchange="toggleMidia();calcPreco()">
+            <span class="tslider"></span>
+          </label>
+        </div>
+
+        <div id="midia-bloco" style="display:none;margin-top:14px;">
+          <div class="notice">
+            <strong>Importante:</strong> A verba de mídia não passa pela Two Dreamers — é administrada na conta do cliente. Apenas a taxa de administração é receita da agência.
+          </div>
+          <div class="fgroup">
+            <label>Verba mensal de mídia (R$)</label>
+            <input type="number" id="p-verba" value="0" min="0" step="100" oninput="calcPreco()">
+          </div>
+          <div class="fgroup">
+            <label>Taxa de administração (%)</label>
+            <input type="number" id="p-tadmin" value="15" min="1" max="50" step="0.5" oninput="calcPreco()">
+          </div>
+          <div class="midia-nota" id="midia-nota" style="display:none;"></div>
+        </div>
+      </div>
+
+      <!-- CARD DE RESULTADO -->
+      <div class="rcard" id="rcard">
+
+        <div class="r-main" id="r-preco">R$ 0,00</div>
+        <div class="r-sublabel" id="r-label">Preço do serviço</div>
+
+        <!-- Linha taxa admin -->
+        <div id="r-admin-linha" style="display:none;text-align:center;margin-bottom:12px;">
+          <div style="font-size:12px;color:var(--muted);">+ Taxa de administração de mídia</div>
+          <div style="font-size:20px;font-weight:700;color:var(--gold);" id="r-admin-val">R$ 0,00</div>
+        </div>
+
+        <!-- Total da proposta -->
+        <div class="total-prop" id="r-total-prop">
+          <div class="tpl">TOTAL DA PROPOSTA</div>
+          <div class="tpv" id="r-total-val">R$ 0,00</div>
+        </div>
+
+        <!-- Desconto -->
+        <div class="desc-block" id="r-desc-bloco">
+          <span class="strikethrough" id="r-orig"></span>
+          <span style="margin:0 7px;color:var(--muted)">→</span>
+          <span style="font-size:21px;font-weight:700;color:var(--success);" id="r-com-desc"></span>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;" id="r-desc-pct"></div>
+        </div>
+
+        <div class="rrow">
+          <span class="rk">Custo total</span>
+          <span class="rv" id="r-custo">R$ 0,00</span>
+        </div>
+        <div class="rrow">
+          <span class="rk">Lucro estimado</span>
+          <span class="rv green" id="r-lucro">R$ 0,00</span>
+        </div>
+        <div class="rrow">
+          <span class="rk">Margem real</span>
+          <span class="rv gold" id="r-margem">0%</span>
+        </div>
+
+        <!-- Bloco meses -->
+        <div id="r-meses-bloco" style="display:none;">
+          <div class="r-sep"></div>
+          <div class="rrow">
+            <span class="rk">Valor mensal</span>
+            <span class="rv gold" id="r-mensal">R$ 0,00</span>
+          </div>
+          <div class="rrow">
+            <span class="rk" id="r-meses-lbl">Total do contrato</span>
+            <span class="rv" style="font-size:18px;font-weight:700;color:var(--gold);" id="r-contrato">R$ 0,00</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabela comparativa -->
+      <div id="comp-sec" style="display:none;">
+        <div class="section-label">Tabela comparativa de margens</div>
+        <table class="ctable">
+          <thead>
+            <tr>
+              <th>Margem</th>
+              <th>Preço</th>
+              <th>Lucro</th>
+            </tr>
+          </thead>
+          <tbody id="comp-body"></tbody>
+        </table>
+        <div class="gap2"></div>
+      </div>
+
+      <!-- Nome do cliente -->
+      <div class="fgroup">
+        <label>Nome do cliente / proposta</label>
+        <input type="text" id="p-nome" placeholder="Ex: Empresa ABC, Projeto João...">
+      </div>
+
+      <!-- Botões de ação -->
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="btn btn-primary btn-full" id="btn-cart" onclick="addToCart()">
+          ➕ Adicionar ao Pedido
+        </button>
+        <button class="btn btn-outline btn-full" onclick="saveModel()">
+          📌 Salvar como modelo
+        </button>
+        <button class="btn btn-success btn-full" onclick="saveClient()">
+          👥 Salvar cliente
+        </button>
+      </div>
+
+      <input type="hidden" id="p-edit-idx" value="-1">
+    </div>
+  </div>
+</div>
+
+<!-- =========================================
+     MODAL: RESUMO DA PROPOSTA
+========================================= -->
+<div class="overlay" id="ov-sum">
+  <div class="mbox">
+    <div class="mhead">
+      <h2>📄 Proposta</h2>
+      <button class="mclose" onclick="closeModal('ov-sum')">✕</button>
+    </div>
+    <div class="mbody" id="sum-body"></div>
+  </div>
+</div>
+
+<!-- =========================================
+     MODAL: EDITAR CLIENTE
+========================================= -->
+<div class="overlay" id="ov-eclient">
+  <div class="mbox">
+    <div class="mhead">
+      <h2>✏️ Editar cliente</h2>
+      <button class="mclose" onclick="closeModal('ov-eclient')">✕</button>
+    </div>
+    <div class="mbody">
+      <input type="hidden" id="ec-id">
+      <div class="fgroup">
+        <label>Nome do cliente / proposta</label>
+        <input type="text" id="ec-nome">
+      </div>
+      <div class="fgroup">
+        <label>Valor do serviço (R$)</label>
+        <input type="number" id="ec-valor" min="0" step="0.01">
+      </div>
+      <div class="fgroup">
+        <label>Tipo de cobrança</label>
+        <div class="seg" id="seg-ec-tipo">
+          <button class="active" onclick="setECTipo('mensal',this)">Mensal</button>
+          <button onclick="setECTipo('projeto',this)">Projeto único</button>
+        </div>
+        <input type="hidden" id="ec-tipo" value="mensal">
+      </div>
+      <div class="fgroup" id="ec-meses-g">
+        <label>Meses do contrato</label>
+        <input type="number" id="ec-meses" value="1" min="1">
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary btn-full" onclick="updateClient()">💾 Atualizar</button>
+        <button class="btn btn-success" onclick="ecToCart()">➕ Pedido</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
