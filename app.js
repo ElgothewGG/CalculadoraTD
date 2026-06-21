@@ -1,1023 +1,1334 @@
-// ════════════════════════════════════════════════════════════
-//  STORAGE
-// ════════════════════════════════════════════════════════════
-const LS = {
-  get: k    => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
-  set: (k,v) => localStorage.setItem(k, JSON.stringify(v))
-};
-const LS_INGR    = 'vf_ingredientes';
-const LS_SALVAS  = 'vf_salvas';
-const LS_CART    = 'vf_cart';
-const LS_MODELOS = 'vf_modelos';
-const LS_FRETE   = 'vf_frete';
+// =============================================
+//  TWO DREAMERS — PRECIFICAÇÃO  |  app.js  v2
+// =============================================
+'use strict';
 
-// ════════════════════════════════════════════════════════════
-//  DEFAULT DATA
-// ════════════════════════════════════════════════════════════
-const DEFAULT_INGR = [
-  { id: uid(), nome: 'Arroz',              preco: 22,   qtd: 5,   unidade: 'kg' },
-  { id: uid(), nome: 'Feijão Carioca',     preco: 7,    qtd: 1,   unidade: 'kg' },
-  { id: uid(), nome: 'Feijão Preto',       preco: 8,    qtd: 1,   unidade: 'kg' },
-  { id: uid(), nome: 'Frango',             preco: 17,   qtd: 1,   unidade: 'kg' },
-  { id: uid(), nome: 'Pernil',             preco: 20,   qtd: 1,   unidade: 'kg' },
-  { id: uid(), nome: 'Carne Moída',        preco: 20,   qtd: 1,   unidade: 'kg' },
-  { id: uid(), nome: 'Brócolis Congelado', preco: 11.9, qtd: 1,   unidade: 'kg' },
-  { id: uid(), nome: 'Vagem',              preco: 12.9, qtd: 400, unidade: 'g'  },
-  { id: uid(), nome: 'Cenoura',            preco: 7.5,  qtd: 500, unidade: 'g'  },
-  { id: uid(), nome: 'Pote',              preco: 167,  qtd: 144, unidade: 'unidade' },
-  { id: uid(), nome: 'Rótulo/Etiqueta',   preco: 85,   qtd: 300, unidade: 'unidade' },
-];
+// -----------------------------------------------
+//  ESTADO
+// -----------------------------------------------
+let custos   = JSON.parse(localStorage.getItem('td_custos')   || '[]');
+let clientes = JSON.parse(localStorage.getItem('td_clientes') || '[]');
+let cart     = JSON.parse(localStorage.getItem('td_cart')     || '[]');
+let modelos  = JSON.parse(localStorage.getItem('td_modelos')  || '[]');
 
-// ════════════════════════════════════════════════════════════
-//  STATE
-// ════════════════════════════════════════════════════════════
-let ingredientes   = LS.get(LS_INGR)     || DEFAULT_INGR;
-let salvas         = LS.get(LS_SALVAS)   || [];
-let cart           = LS.get(LS_CART)     || [];
-let modelos        = LS.get(LS_MODELOS)  || [];
-let frete          = R(LS.get(LS_FRETE)) || 0;
-let selection      = {};
-let editingId      = null;
-let editingCartIdx = null;
-let editingSalvaId = null;
+// Tiers: { prata:5, ouro:10, diamante:15 }
+let tiers = JSON.parse(localStorage.getItem('td_tiers') || 'null') || { prata:5, ouro:10, diamante:15 };
 
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
-function R(n)  { const x = parseFloat(n); return isNaN(x) ? 0 : x; }
+// Observações persistentes
+let obs = localStorage.getItem('td_obs') || '';
 
-// ════════════════════════════════════════════════════════════
-//  CÁLCULO DE PREÇO
-// ════════════════════════════════════════════════════════════
-function precoPorGrama(ingr) {
-  if (ingr.unidade === 'kg')      return ingr.preco / (ingr.qtd * 1000);
-  if (ingr.unidade === 'g')       return ingr.preco / ingr.qtd;
-  if (ingr.unidade === 'unidade') return ingr.preco / ingr.qtd;
-  return 0;
-}
+// Itens selecionados no calculador: { id: quantidade }
+let sel = {};
 
-function custoItem(ingr, qtdUsada) {
-  return precoPorGrama(ingr) * qtdUsada;
-}
+// ID editado no form de custo
+let editCId = null;
 
-function custoTotal() {
-  let t = 0;
-  for (const [id, sel] of Object.entries(selection)) {
-    const ingr = ingredientes.find(i => i.id === id);
-    if (!ingr || !sel.qtd) continue;
-    t += custoItem(ingr, sel.qtd);
-  }
-  return t;
-}
+// -----------------------------------------------
+//  PERSIST / UTILS
+// -----------------------------------------------
+const persist = (key, val) => localStorage.setItem(key, JSON.stringify(val));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-/**
- * Calcula o preço de venda BASE (sem desconto) para uma margem alvo.
- *
- * custo_efetivo = custo_base × (1 + imposto/100)
- * precoBase     = custo_efetivo / ((1−M) × (1−taxa/100))
- * receita_liq   = precoBase × (1 − taxa/100)
- * lucro         = receita_liq − custo_efetivo
- * margemReal    ≈ M (confirmação)
- *
- * O desconto NÃO entra aqui — ele é aplicado SOBRE o precoBase depois.
- * Assim o preço normal não sobe para "compensar" o desconto.
- */
-function calcPreco(custo, margem, taxaCartao, imposto) {
-  const M    = margem     / 100;
-  const taxa = taxaCartao / 100;
-  const imp  = imposto    / 100;
-
-  const custoEfetivo = custo * (1 + imp);
-  const denom        = (1 - M) * (1 - taxa);
-  if (denom <= 0 || custo === 0) {
-    return { precoBase: 0, lucro: 0, margemReal: 0, custoEfetivo };
-  }
-  const precoBase  = custoEfetivo / denom;
-  const receitaLiq = precoBase * (1 - taxa);
-  const lucro      = receitaLiq - custoEfetivo;
-  const margemReal = receitaLiq > 0 ? (lucro / receitaLiq) * 100 : 0;
-  return { precoBase, lucro, margemReal, custoEfetivo };
-}
-
-/**
- * Aplica desconto sobre o preço base e calcula o novo lucro/margem real.
- * Retorna null se desconto === 0.
- */
-function calcComDesconto(precoBase, desconto, taxaCartao, custoEfetivo) {
-  if (desconto === 0) return null;
-  const precoFinal = precoBase * (1 - desconto / 100);
-  const receitaLiq = precoFinal * (1 - taxaCartao / 100);
-  const lucro      = receitaLiq - custoEfetivo;
-  const margemReal = receitaLiq > 0 ? (lucro / receitaLiq) * 100 : 0;
-  return { precoFinal, lucro, margemReal };
-}
-
-// ════════════════════════════════════════════════════════════
-//  NAVIGATION
-// ════════════════════════════════════════════════════════════
-function showScreen(name, btn) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-  document.getElementById('screen-' + name).classList.add('active');
-  if (btn) btn.classList.add('active');
-  if (name === 'montar')       { renderModelos(); renderMontar(); updatePriceBar(); }
-  if (name === 'ingredientes') renderIngredientes();
-  if (name === 'pedido')       renderPedido();
-  if (name === 'salvas')       renderSalvas();
-}
-
-// ════════════════════════════════════════════════════════════
-//  MODELOS DE MARMITA
-// ════════════════════════════════════════════════════════════
-
-// Custo real de um modelo com preços atuais dos ingredientes
-function custoModelo(m) {
-  let t = 0;
-  (m.ingrs || []).forEach(({ id, qtd }) => {
-    const ingr = ingredientes.find(i => i.id === id);
-    if (ingr && qtd) t += custoItem(ingr, qtd);
+function fmt(v) {
+  return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
   });
-  return t;
 }
 
-function renderModelos() {
-  const scroll = document.getElementById('modelos-scroll');
-  const hint   = document.getElementById('modelos-empty-hint');
-  if (!scroll) return;
+function fmtDate() {
+  return new Date().toLocaleDateString('pt-BR', {
+    day: '2-digit', month: 'long', year: 'numeric'
+  });
+}
 
-  if (!modelos.length) {
-    scroll.innerHTML = '';
-    hint.style.display = 'block';
-    // Sem modelos: expande a seção customizada automaticamente
-    setCustomOpen(true);
+function esc(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// -----------------------------------------------
+//  TOAST
+// -----------------------------------------------
+function toast(msg, ms = 2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+// -----------------------------------------------
+//  TABS
+// -----------------------------------------------
+function switchTab(tab) {
+  document.querySelectorAll('.nav-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === tab)
+  );
+  document.querySelectorAll('.tab').forEach(c =>
+    c.classList.toggle('active', c.id === 'tab-' + tab)
+  );
+  document.getElementById('pbar').style.display = tab === 'calcular' ? 'flex' : 'none';
+
+  if (tab === 'calcular') renderCalc();
+  if (tab === 'custos')   { renderCustoList(); loadTierInputs(); }
+  if (tab === 'pedido')   renderCart();
+  if (tab === 'clientes') renderClients();
+}
+
+// -----------------------------------------------
+//  MODAIS
+// -----------------------------------------------
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.querySelectorAll('.overlay').forEach(ov =>
+  ov.addEventListener('click', e => { if (e.target === ov) closeModal(ov.id); })
+);
+
+// -----------------------------------------------
+//  COLLAPSIBLE / RANGE
+// -----------------------------------------------
+function toggleColl(id, btn) {
+  const el = document.getElementById(id);
+  el.classList.toggle('open');
+  btn.querySelector('span:last-child').textContent = el.classList.contains('open') ? '▲' : '▼';
+}
+
+function updRange(inputId, displayId, suffix) {
+  document.getElementById(displayId).textContent =
+    document.getElementById(inputId).value + suffix;
+}
+
+// -----------------------------------------------
+//  OBSERVAÇÕES
+// -----------------------------------------------
+function saveObs() {
+  obs = document.getElementById('contract-obs')?.value
+     || document.getElementById('proposta-obs')?.value
+     || '';
+  localStorage.setItem('td_obs', obs);
+  // Sync both textareas
+  const po = document.getElementById('proposta-obs');
+  const co = document.getElementById('contract-obs');
+  if (po && po !== document.activeElement) po.value = obs;
+  if (co && co !== document.activeElement) co.value = obs;
+}
+
+function loadObs() {
+  obs = localStorage.getItem('td_obs') || '';
+  const po = document.getElementById('proposta-obs');
+  const co = document.getElementById('contract-obs');
+  if (po) po.value = obs;
+  if (co) co.value = obs;
+}
+
+// -----------------------------------------------
+//  TIERS CONFIG
+// -----------------------------------------------
+function saveTiers() {
+  tiers = {
+    prata:    parseFloat(document.getElementById('tier-prata').value)    || 0,
+    ouro:     parseFloat(document.getElementById('tier-ouro').value)     || 0,
+    diamante: parseFloat(document.getElementById('tier-diamante').value) || 0,
+  };
+  persist('td_tiers', tiers);
+}
+
+function loadTierInputs() {
+  document.getElementById('tier-prata').value    = tiers.prata;
+  document.getElementById('tier-ouro').value     = tiers.ouro;
+  document.getElementById('tier-diamante').value = tiers.diamante;
+}
+
+function setTierInfo() {
+  const tier = document.getElementById('p-tier').value;
+  const el   = document.getElementById('tier-info');
+  const pct  = tiers[tier];
+  if (tier === 'nenhum' || !pct) {
+    el.style.display = 'none';
     return;
   }
-  hint.style.display = 'none';
+  const labels = { prata: '🥈 Prata', ouro: '🥇 Ouro', diamante: '💎 Diamante' };
+  el.style.display = 'block';
+  el.textContent = `${labels[tier]}: desconto automático de ${pct}% aplicado ao preço base`;
+}
 
-  scroll.innerHTML = modelos.map(m => {
-    const custo = custoModelo(m);
-    const preco = calcPreco(custo, 60, 0, 0).precoBase;
-    return `
-    <div class="modelo-card" onclick="usarModelo('${m.id}')">
-      <button class="modelo-card-del" onclick="event.stopPropagation();apagarModelo('${m.id}')">🗑️</button>
-      <div class="modelo-card-nome">${m.nome}</div>
-      <div class="modelo-card-preco">R$ ${fmt(preco)}</div>
-      <div class="modelo-card-sub">60% margem · toque para usar</div>
+// =============================================
+//  ABA CALCULAR
+// =============================================
+
+function renderCalc() {
+  renderModels();
+  renderCselList();
+  updatePbar();
+}
+
+function updatePbar() {
+  const custo = calcCusto();
+  document.getElementById('pbar-val').textContent = fmt(custo > 0 ? custo / 0.5 : 0);
+}
+
+function calcCusto() {
+  return Object.entries(sel).reduce((acc, [id, qty]) => {
+    const c = custos.find(x => x.id === id);
+    if (!c) return acc;
+    return acc + (c.tipo === 'mes' ? c.valor : c.valor * qty);
+  }, 0);
+}
+
+// --- MODELOS ---
+function renderModels() {
+  const row = document.getElementById('models-scroll');
+  if (!modelos.length) {
+    row.innerHTML = `<p style="font-size:13px;color:var(--muted);padding:2px 0 10px;">
+      Nenhum modelo salvo. Calcule um serviço e clique em "Salvar como modelo".
+    </p>`;
+    return;
+  }
+  row.innerHTML = modelos.map(m => {
+    const preco = calcModelPrice(m);
+    return `<div class="mcard" onclick="loadModel('${m.id}')">
+      <button class="mcard-del" onclick="event.stopPropagation();delModel('${m.id}')">🗑️</button>
+      <div class="mcard-name">${esc(m.nome)}</div>
+      <div class="mcard-price">${fmt(preco)}</div>
     </div>`;
   }).join('');
-
-  // Com modelos: colapsa a seção customizada por padrão
-  setCustomOpen(false);
 }
 
-function setCustomOpen(open) {
-  const body  = document.getElementById('custom-body');
-  const arrow = document.getElementById('custom-toggle-arrow');
-  if (!body) return;
-  body.style.display  = open ? 'block' : 'none';
-  if (arrow) arrow.textContent = open ? '▲' : '▼';
+function calcModelPrice(m, margem = 50) {
+  const custo = (m.itens || []).reduce((acc, it) => {
+    const c = custos.find(x => x.id === it.id);
+    if (!c) return acc;
+    return acc + (c.tipo === 'mes' ? c.valor : c.valor * it.qtd);
+  }, 0);
+  return custo > 0 ? custo / (1 - margem / 100) : 0;
 }
 
-function toggleCustom() {
-  const body = document.getElementById('custom-body');
-  if (!body) return;
-  setCustomOpen(body.style.display === 'none');
-}
-
-function usarModelo(id) {
+function loadModel(id) {
   const m = modelos.find(x => x.id === id);
   if (!m) return;
-
-  // Carrega ingredientes do modelo na seleção
-  selection = {};
-  (m.ingrs || []).forEach(i => { selection[i.id] = { qtd: i.qtd }; });
-
-  setCustomOpen(true);   // mostra ingredientes carregados
-  renderMontar();
-  updatePriceBar();
-
-  // Abre o calculador com o nome do modelo já preenchido
-  setTimeout(() => {
-    document.getElementById('modal-pedido-nome').value = m.nome;
-    openMargensModal();
-  }, 80);
-
-  showToast(`⭐ "${m.nome}" carregado!`);
+  sel = {};
+  (m.itens || []).forEach(it => { sel[it.id] = it.qtd; });
+  renderCselList();
+  updatePbar();
+  if (m.tipoMidia?.ativo) {
+    document.getElementById('p-midia').checked = true;
+    document.getElementById('p-verba').value   = m.tipoMidia.verba    || 0;
+    document.getElementById('p-tadmin').value  = m.tipoMidia.taxaAdmin || 15;
+    document.getElementById('midia-bloco').style.display = 'block';
+  }
+  toast(`Modelo "${m.nome}" carregado`);
 }
 
-function apagarModelo(id) {
-  if (!confirm('Apagar este modelo?')) return;
+function delModel(id) {
   modelos = modelos.filter(m => m.id !== id);
-  LS.set(LS_MODELOS, modelos);
-  renderModelos();
-  showToast('🗑️ Modelo apagado');
+  persist('td_modelos', modelos);
+  renderModels();
+  toast('Modelo removido');
 }
 
-function openSaveModeloModal() {
-  if (custoTotal() === 0) {
-    showToast('⚠️ Adicione ingredientes com quantidade', '#d9534f'); return;
-  }
-  document.getElementById('modelo-nome').value = '';
-  if (document.getElementById('modal-margens').classList.contains('open'))
-    closeModal('modal-margens');
-  openModal('modal-salvar-modelo');
-  setTimeout(() => document.getElementById('modelo-nome').focus(), 220);
-}
-
-function confirmarSalvarModelo() {
-  const nome = document.getElementById('modelo-nome').value.trim();
-  if (!nome) { showToast('⚠️ Digite um nome para o modelo', '#d9534f'); return; }
-
-  const ingrsSnap = Object.entries(selection)
-    .filter(([, s]) => s.qtd)
-    .map(([id, s]) => ({ id, qtd: s.qtd }));
-
-  modelos.unshift({
-    id: uid(), nome, ingrs: ingrsSnap,
-    criadoEm: new Date().toLocaleDateString('pt-BR')
-  });
-  LS.set(LS_MODELOS, modelos);
-  closeModal('modal-salvar-modelo');
-  renderModelos();
-  showToast(`⭐ Modelo "${nome}" salvo!`);
-}
-
-// ════════════════════════════════════════════════════════════
-//  INGREDIENTES — render
-// ════════════════════════════════════════════════════════════
-function renderIngredientes() {
-  const list  = document.getElementById('ingr-list');
-  const empty = document.getElementById('ingr-empty');
-  if (!ingredientes.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
-  empty.style.display = 'none';
-
-  list.innerHTML = ingredientes.map(i => {
-    const ppg    = precoPorGrama(i);
-    const unStr  = i.unidade === 'unidade'
-      ? `R$ ${fmt(ppg)} / unidade`
-      : `R$ ${fmt(ppg * 1000)} / kg`;
-    const qtdStr = i.unidade === 'kg'
-      ? `${i.qtd} kg`
-      : i.unidade === 'g'
-        ? `${i.qtd} g`
-        : `${i.qtd} unidades`;
-    return `
-    <div class="ingr-item">
-      <div class="ingr-item-info">
-        <div class="ingr-item-name">${i.nome}</div>
-        <div class="ingr-item-price">Pagou R$ ${fmt(i.preco)} em ${qtdStr} → ${unStr}</div>
-      </div>
-      <div class="ingr-item-actions">
-        <button class="btn btn-outline btn-sm" onclick="editIngrediente('${i.id}')">✏️</button>
-        <button class="btn btn-danger btn-sm"  onclick="deleteIngrediente('${i.id}')">🗑️</button>
-      </div>
+// --- LISTA DE SELEÇÃO AGRUPADA POR CATEGORIA ---
+function renderCselList() {
+  const el = document.getElementById('csel-list');
+  if (!custos.length) {
+    el.innerHTML = `<div class="empty">
+      <div class="eic">⚙️</div>
+      <p>Nenhum item cadastrado ainda.<br>Vá em <strong>Custos</strong> para começar.</p>
     </div>`;
-  }).join('');
-}
-
-// ════════════════════════════════════════════════════════════
-//  INGREDIENTES — CRUD
-// ════════════════════════════════════════════════════════════
-function saveIngrediente() {
-  const nome    = document.getElementById('ingr-nome').value.trim();
-  const preco   = parseFloat(document.getElementById('ingr-preco').value.replace(',','.'));
-  const qtd     = parseFloat(document.getElementById('ingr-qtd').value.replace(',','.'));
-  const unidade = document.getElementById('ingr-unidade').value;
-  if (!nome || isNaN(preco) || isNaN(qtd) || preco <= 0 || qtd <= 0) {
-    showToast('⚠️ Preencha todos os campos', '#d9534f'); return;
-  }
-  if (editingId) {
-    const idx = ingredientes.findIndex(i => i.id === editingId);
-    if (idx >= 0) ingredientes[idx] = { id: editingId, nome, preco, qtd, unidade };
-    editingId = null;
-  } else {
-    ingredientes.push({ id: uid(), nome, preco, qtd, unidade });
-  }
-  LS.set(LS_INGR, ingredientes);
-  clearIngrForm();
-  renderIngredientes();
-  showToast('✅ Ingrediente salvo!');
-}
-
-function editIngrediente(id) {
-  const i = ingredientes.find(x => x.id === id);
-  if (!i) return;
-  editingId = id;
-  document.getElementById('ingr-nome').value    = i.nome;
-  document.getElementById('ingr-preco').value   = i.preco;
-  document.getElementById('ingr-qtd').value     = i.qtd;
-  document.getElementById('ingr-unidade').value = i.unidade;
-  document.getElementById('ingr-form-title').textContent = '✏️ Editar ingrediente';
-  document.getElementById('ingr-cancel-btn').style.display = 'inline-flex';
-  document.getElementById('ingr-form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function cancelEditIngrediente() { editingId = null; clearIngrForm(); }
-
-function clearIngrForm() {
-  ['ingr-nome','ingr-preco','ingr-qtd'].forEach(id => document.getElementById(id).value = '');
-  document.getElementById('ingr-unidade').value = 'kg';
-  document.getElementById('ingr-form-title').textContent = '➕ Adicionar ingrediente';
-  document.getElementById('ingr-cancel-btn').style.display = 'none';
-}
-
-function deleteIngrediente(id) {
-  if (!confirm('Apagar este ingrediente?')) return;
-  ingredientes = ingredientes.filter(i => i.id !== id);
-  delete selection[id];
-  LS.set(LS_INGR, ingredientes);
-  renderIngredientes();
-  showToast('🗑️ Ingrediente apagado');
-}
-
-// ════════════════════════════════════════════════════════════
-//  MONTAR
-// ════════════════════════════════════════════════════════════
-function renderMontar() {
-  const list  = document.getElementById('montar-list');
-  const empty = document.getElementById('montar-empty');
-  if (!ingredientes.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
-  empty.style.display = 'none';
-
-  list.innerHTML = ingredientes.map(ingr => {
-    const sel        = selection[ingr.id];
-    const isSelected = !!sel;
-    const qtdVal     = sel ? sel.qtd : '';
-    const unLabel    = ingr.unidade === 'unidade' ? 'unidades' : 'gramas (g)';
-    const custo      = isSelected && qtdVal ? custoItem(ingr, qtdVal) : 0;
-    const ppg        = precoPorGrama(ingr);
-    const subLabel   = ingr.unidade === 'unidade'
-      ? `R$ ${fmt(ppg)} / unidade`
-      : `R$ ${fmt(ppg * 1000)}/kg · R$ ${fmt(ppg * 100)}/100g`;
-
-    return `
-    <div class="sel-item ${isSelected ? 'selected' : ''}" id="si-${ingr.id}" onclick="toggleIngr('${ingr.id}')">
-      <div class="sel-item-check">${isSelected ? '✓' : ''}</div>
-      <div class="sel-item-body">
-        <div class="sel-item-name">${ingr.nome}</div>
-        <div class="sel-item-sub">${subLabel}</div>
-        ${isSelected ? `
-        <div class="qty-row" onclick="event.stopPropagation()">
-          <label>Qtd (${unLabel}):</label>
-          <input type="number" inputmode="decimal" min="0" step="any"
-            value="${qtdVal}" placeholder="Ex: 200"
-            onchange="setQtd('${ingr.id}', this.value)"
-            oninput="setQtd('${ingr.id}', this.value)" />
-          <span class="qty-cost">${custo > 0 ? 'R$ ' + fmt(custo) : ''}</span>
-        </div>` : ''}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function toggleIngr(id) {
-  if (selection[id]) { delete selection[id]; }
-  else               { selection[id] = { qtd: '' }; }
-  renderMontar();
-  updatePriceBar();
-  if (selection[id] !== undefined) {
-    setTimeout(() => {
-      const inp = document.querySelector(`#si-${id} .qty-row input`);
-      if (inp) inp.focus();
-    }, 60);
-  }
-}
-
-function setQtd(id, val) {
-  const n = parseFloat(String(val).replace(',','.'));
-  selection[id] = { qtd: (isNaN(n) || n < 0) ? '' : n };
-  const ingr = ingredientes.find(i => i.id === id);
-  const c    = (ingr && selection[id].qtd) ? custoItem(ingr, selection[id].qtd) : 0;
-  const el   = document.querySelector(`#si-${id} .qty-cost`);
-  if (el) el.textContent = c > 0 ? 'R$ ' + fmt(c) : '';
-  updatePriceBar();
-}
-
-// ════════════════════════════════════════════════════════════
-//  PRICE BAR
-// ════════════════════════════════════════════════════════════
-function updatePriceBar() {
-  const bar      = document.getElementById('price-bar');
-  const isMontar = document.getElementById('screen-montar').classList.contains('active');
-  if (!isMontar) { bar.style.display = 'none'; return; }
-  bar.style.display = 'flex';
-
-  const custo = custoTotal();
-  if (custo === 0) {
-    document.getElementById('pb-price-val').textContent = 'R$ 0,00';
-    document.getElementById('pb-label').textContent = 'Preço sugerido (60% de margem)';
-    return;
-  }
-  const r = calcPreco(custo, 60, 0, 0);
-  document.getElementById('pb-price-val').textContent = 'R$ ' + fmt(r.precoBase);
-  document.getElementById('pb-label').textContent = 'Preço sugerido (60% de margem)';
-}
-
-// ════════════════════════════════════════════════════════════
-//  MODAL MARGENS — abrir
-// ════════════════════════════════════════════════════════════
-function openMargensModal() {
-  const custo = custoTotal();
-
-  // resumo dos ingredientes
-  const rows = Object.entries(selection)
-    .filter(([, s]) => s.qtd)
-    .map(([id, s]) => {
-      const ingr = ingredientes.find(i => i.id === id);
-      if (!ingr) return '';
-      const c  = custoItem(ingr, s.qtd);
-      const un = ingr.unidade === 'unidade' ? `${s.qtd} und` : `${s.qtd}g`;
-      return `<div class="cs-row"><span>${ingr.nome} (${un})</span><span>R$ ${fmt(c)}</span></div>`;
-    }).join('');
-
-  document.getElementById('modal-ingr-rows').innerHTML =
-    rows + `<div class="cs-row cs-total"><span>Custo total</span><span>R$ ${fmt(custo)}</span></div>`;
-  document.getElementById('modal-custo-label').textContent =
-    `Custo dos ingredientes: R$ ${fmt(custo)}`;
-
-  // pré-preenche nome da marmita
-  if (!document.getElementById('modal-pedido-nome').value) {
-    const preview = Object.entries(selection)
-      .filter(([, s]) => s.qtd)
-      .map(([id]) => ingredientes.find(i => i.id === id)?.nome)
-      .filter(Boolean).slice(0, 2).join(' + ');
-    document.getElementById('modal-pedido-nome').value =
-      preview ? `Marmita (${preview})` : '';
-  }
-
-  updateModalCalc();
-  openModal('modal-margens');
-}
-
-// ════════════════════════════════════════════════════════════
-//  MODAL MARGENS — atualização em tempo real
-// ════════════════════════════════════════════════════════════
-function updateModalCalc() {
-  const custo      = custoTotal();
-  const qtd        = Math.max(1, parseInt(document.getElementById('modal-qtd').value) || 1);
-  const taxa       = R(document.getElementById('modal-taxa').value);
-  const imposto    = R(document.getElementById('modal-imposto').value);
-  const desconto   = R(document.getElementById('modal-desconto').value);
-  const margemAlvo = parseInt(document.getElementById('modal-margem-alvo').value) || 60;
-
-  // label do slider
-  const dv = document.getElementById('modal-desconto-val');
-  dv.textContent = desconto > 0 ? `${desconto}% de desconto sobre o preço normal` : 'Sem desconto';
-  dv.style.color = desconto > 0 ? 'var(--verde)' : '#aaa';
-
-  if (custo === 0) {
-    ['rc-preco','rc-lucro-unit','rc-custo-efetivo'].forEach(id =>
-      document.getElementById(id).textContent = 'R$ 0,00');
-    document.getElementById('rc-margem-real').textContent    = '0%';
-    document.getElementById('rc-disc-section').style.display = 'none';
-    document.getElementById('rc-qty-block').style.display    = 'none';
-    document.getElementById('modal-margens-body').innerHTML  = '';
     return;
   }
 
-  // preço base (sem desconto)
-  const r = calcPreco(custo, margemAlvo, taxa, imposto);
+  const colaboradores = custos.filter(c => (c.categoria || 'colaborador') === 'colaborador');
+  const ferramentas   = custos.filter(c => c.categoria === 'ferramenta');
+  let html = '';
 
-  document.getElementById('rc-preco').textContent         = 'R$ ' + fmt(r.precoBase);
-  document.getElementById('rc-lucro-unit').textContent    = 'R$ ' + fmt(r.lucro);
-  document.getElementById('rc-margem-real').textContent   = fmt1(r.margemReal) + '%';
-  document.getElementById('rc-custo-efetivo').textContent = 'R$ ' + fmt(r.custoEfetivo);
-  document.getElementById('rc-lucro-label').textContent   = 'Lucro / marmita';
-
-  // desconto: mostra preço normal → preço com desconto (sem inflacionar)
-  const disc = calcComDesconto(r.precoBase, desconto, taxa, r.custoEfetivo);
-  if (disc) {
-    document.getElementById('rc-disc-section').style.display  = 'block';
-    document.getElementById('rc-desc-pct').textContent        = `${desconto}%`;
-    document.getElementById('rc-preco-orig-novo').textContent = 'R$ ' + fmt(r.precoBase);
-    document.getElementById('rc-preco-com-desc').textContent  = 'R$ ' + fmt(disc.precoFinal);
-    document.getElementById('rc-margem-com-desc').textContent =
-      `Margem real com desconto: ${fmt1(disc.margemReal)}%  ·  Lucro: R$ ${fmt(disc.lucro)}`;
-  } else {
-    document.getElementById('rc-disc-section').style.display = 'none';
+  if (colaboradores.length) {
+    html += `<div class="csel-header">👤 Colaboradores</div>`;
+    html += colaboradores.map(c => renderCselItem(c)).join('');
+  }
+  if (ferramentas.length) {
+    if (colaboradores.length) html += '<div style="height:6px;"></div>';
+    html += `<div class="csel-header">🛠 Ferramentas & Assinaturas</div>`;
+    html += ferramentas.map(c => renderCselItem(c)).join('');
   }
 
-  // bloco de quantidade — usa o preço com desconto se houver
-  const precoParaQtd = disc ? disc.precoFinal : r.precoBase;
-  const lucroParaQtd = disc ? disc.lucro       : r.lucro;
-  if (qtd > 1) {
-    document.getElementById('rc-qty-block').style.display = 'block';
-    document.getElementById('rc-qty-label').textContent   =
-      `Total para ${qtd} marmitas${disc ? ' (com desconto)' : ''}:`;
-    document.getElementById('rc-qty-total-txt').textContent =
-      `Cliente paga R$ ${fmt(precoParaQtd * qtd)}  ·  Lucro R$ ${fmt(lucroParaQtd * qtd)}`;
+  el.innerHTML = html;
+}
+
+function renderCselItem(c) {
+  const on  = c.id in sel;
+  const qty = sel[c.id] || 1;
+  const parcial  = on ? (c.tipo === 'mes' ? c.valor : c.valor * qty) : 0;
+  const isColab  = (c.categoria || 'colaborador') === 'colaborador';
+  const qtyLabel = isColab && c.tipo === 'hora' ? 'h no projeto' : '';
+
+  return `<div class="csel-row">
+    <div class="csel-chk${on ? ' on' : ''}" onclick="toggleSel('${c.id}')"></div>
+    <div class="csel-info">
+      <div class="csel-name">${esc(c.nome)}</div>
+      <div class="csel-sub">${fmt(c.valor)}/${c.tipo === 'hora' ? 'hora' : 'mês fixo'}</div>
+    </div>
+    ${on ? `
+      <div class="csel-qty">
+        ${c.tipo === 'mes'
+          ? `<input type="number" value="1" disabled>`
+          : `<input type="number" value="${qty}" min="1" max="9999"
+               oninput="updSel('${c.id}',this.value)"
+               onclick="event.stopPropagation()">`
+        }
+        ${qtyLabel ? `<div class="csel-qty-lbl">${qtyLabel}</div>` : ''}
+      </div>
+      <div class="csel-val">${fmt(parcial)}</div>
+    ` : ''}
+  </div>`;
+}
+
+function toggleSel(id) {
+  if (id in sel) delete sel[id];
+  else sel[id] = 1;
+  renderCselList();
+  updatePbar();
+}
+
+function updSel(id, rawVal) {
+  sel[id] = Math.max(1, parseFloat(rawVal) || 1);
+  updatePbar();
+  renderCselList();
+}
+
+// =============================================
+//  ABA CUSTOS
+// =============================================
+
+function setCCat(cat, btn) {
+  document.getElementById('c-cat').value = cat;
+  document.querySelectorAll('#seg-cat button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  // Sugestão de tipo padrão por categoria
+  if (cat === 'colaborador') setCTipoById('hora');
+  else setCTipoById('mes');
+}
+
+function setCTipo(tipo, btn) {
+  document.getElementById('c-tipo').value = tipo;
+  document.querySelectorAll('#seg-tipo button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('c-valor-lbl').textContent =
+    tipo === 'hora' ? 'Custo por hora (R$)' : 'Custo mensal fixo (R$)';
+}
+
+function setCTipoById(tipo) {
+  const btns = document.querySelectorAll('#seg-tipo button');
+  btns.forEach((b, i) => b.classList.toggle('active', (i === 0 && tipo === 'hora') || (i === 1 && tipo === 'mes')));
+  document.getElementById('c-tipo').value = tipo;
+  document.getElementById('c-valor-lbl').textContent =
+    tipo === 'hora' ? 'Custo por hora (R$)' : 'Custo mensal fixo (R$)';
+}
+
+function saveCusto() {
+  const nome  = document.getElementById('c-nome').value.trim();
+  const cat   = document.getElementById('c-cat').value || 'colaborador';
+  const tipo  = document.getElementById('c-tipo').value;
+  const valor = parseFloat(document.getElementById('c-valor').value);
+
+  if (!nome)               { toast('❌ Informe o nome do item'); return; }
+  if (!valor || valor <= 0) { toast('❌ Informe um valor válido'); return; }
+
+  if (editCId) {
+    const i = custos.findIndex(c => c.id === editCId);
+    if (i >= 0) custos[i] = { ...custos[i], nome, categoria: cat, tipo, valor };
+    editCId = null;
+    document.getElementById('custo-form-title').textContent = 'Novo item de custo';
+    document.getElementById('c-cancel').style.display = 'none';
+    toast('✅ Item atualizado');
   } else {
-    document.getElementById('rc-qty-block').style.display = 'none';
+    custos.push({ id: uid(), nome, categoria: cat, tipo, valor, criadoEm: Date.now() });
+    toast('✅ Item salvo');
   }
 
-  // tabela comparativa — sempre sem desconto (preços normais de referência)
-  const margens = [30, 35, 40, 45, 50, 55, 60];
-  document.getElementById('modal-margens-body').innerHTML = margens.map(m => {
-    const ri = calcPreco(custo, m, taxa, imposto);
-    const hl = m === margemAlvo;
-    return `<tr ${hl ? 'class="hl"' : ''}>
-      <td>${m}%${hl ? ' <span class="badge">✓</span>' : ''}</td>
-      <td>R$ ${fmt(ri.precoBase)}</td>
-      <td>R$ ${fmt(ri.lucro)}</td>
+  persist('td_custos', custos);
+  document.getElementById('c-nome').value  = '';
+  document.getElementById('c-valor').value = '';
+  renderCustoList();
+}
+
+function cancelCEdit() {
+  editCId = null;
+  document.getElementById('c-nome').value  = '';
+  document.getElementById('c-valor').value = '';
+  document.getElementById('custo-form-title').textContent = 'Novo item de custo';
+  document.getElementById('c-cancel').style.display = 'none';
+}
+
+function editCusto(id) {
+  const c = custos.find(x => x.id === id);
+  if (!c) return;
+  editCId = id;
+  document.getElementById('c-nome').value  = c.nome;
+  document.getElementById('c-valor').value = c.valor;
+
+  const cat = c.categoria || 'colaborador';
+  document.getElementById('c-cat').value = cat;
+  document.querySelectorAll('#seg-cat button').forEach((b, i) =>
+    b.classList.toggle('active', (i === 0 && cat === 'colaborador') || (i === 1 && cat === 'ferramenta'))
+  );
+  setCTipoById(c.tipo);
+  document.getElementById('custo-form-title').textContent = 'Editar item';
+  document.getElementById('c-cancel').style.display = 'inline-flex';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function delCusto(id) {
+  custos = custos.filter(c => c.id !== id);
+  delete sel[id];
+  persist('td_custos', custos);
+  renderCustoList();
+  toast('🗑️ Item removido');
+}
+
+function renderCustoList() {
+  const el = document.getElementById('custo-list');
+  if (!custos.length) {
+    el.innerHTML = `<div class="empty" style="padding:24px 0;">
+      <div class="eic">📝</div><p>Nenhum item ainda. Cadastre acima.</p>
+    </div>`;
+    return;
+  }
+
+  // Agrupar por categoria
+  const colaboradores = custos.filter(c => (c.categoria || 'colaborador') === 'colaborador');
+  const ferramentas   = custos.filter(c => c.categoria === 'ferramenta');
+
+  const renderGroup = (items, label) => items.length
+    ? `<div style="font-size:11px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;
+         font-weight:700;padding:12px 0 4px;">${label}</div>` +
+      items.map(c => `
+        <div class="litem">
+          <div class="litem-info">
+            <div class="litem-name">${esc(c.nome)}</div>
+            <div class="litem-sub">${fmt(c.valor)} / ${c.tipo === 'hora' ? 'hora' : 'mês fixo'}</div>
+          </div>
+          <div class="litem-acts">
+            <button class="btn btn-ghost btn-sm" onclick="editCusto('${c.id}')">✏️</button>
+            <button class="btn btn-danger btn-sm" onclick="delCusto('${c.id}')">🗑️</button>
+          </div>
+        </div>`).join('')
+    : '';
+
+  el.innerHTML =
+    renderGroup(colaboradores, '👤 Colaboradores') +
+    renderGroup(ferramentas, '🛠 Ferramentas & Assinaturas');
+}
+
+// =============================================
+//  CALCULADORA
+// =============================================
+
+function openCalc(editIdx = -1) {
+  document.getElementById('p-edit-idx').value = editIdx;
+
+  if (editIdx >= 0) {
+    loadCartIntoCalc(cart[editIdx]);
+    document.getElementById('btn-cart').textContent = '💾 Salvar edição';
+  } else {
+    document.getElementById('btn-cart').textContent = '➕ Adicionar ao Pedido';
+  }
+
+  showRegraByTipo(document.getElementById('p-tipo').value);
+  setTierInfo();
+  renderModalItems();
+  calcPreco();
+  openModal('ov-calc');
+}
+
+function loadCartIntoCalc(item) {
+  sel = {};
+  (item.itens || []).forEach(it => { sel[it.id] = it.qtd; });
+  renderCselList();
+  updatePbar();
+
+  const tipo = item.tipo || 'mensal';
+  document.getElementById('p-tipo').value = tipo;
+  // sync seg-ctrl tipo cobrança
+  const segBtns = document.querySelectorAll('#ov-calc .seg:first-of-type button');
+  segBtns.forEach((b, i) =>
+    b.classList.toggle('active', (i === 0 && tipo === 'mensal') || (i === 1 && tipo === 'projeto'))
+  );
+  document.getElementById('p-meses-g').style.display = tipo === 'mensal' ? 'block' : 'none';
+  showRegraByTipo(tipo);
+
+  document.getElementById('p-meses').value   = item.meses      || 1;
+  document.getElementById('p-margem').value  = item.margem     || 50;
+  document.getElementById('p-margem-d').textContent = (item.margem || 50) + '%';
+  document.getElementById('p-cartao').value  = item.taxaCartao || 0;
+  document.getElementById('p-imposto').value = item.imposto    || 0;
+  document.getElementById('p-desc').value    = item.desconto   || 0;
+  document.getElementById('p-desc-d').textContent = (item.desconto || 0) + '%';
+  document.getElementById('p-drec').value    = item.descontoRec   || 0;
+  document.getElementById('p-drec-d').textContent = (item.descontoRec || 0) + '%';
+  document.getElementById('p-sproj').value   = item.sobretaxaProj || 0;
+  document.getElementById('p-sproj-d').textContent = (item.sobretaxaProj || 0) + '%';
+  document.getElementById('p-nome').value    = item.nomeServico || '';
+  document.getElementById('p-tier').value    = item.tier        || 'nenhum';
+  document.getElementById('p-escopo').value  = item.escopo      || '';
+
+  const m = item.midia;
+  document.getElementById('p-midia').checked = !!(m?.ativo);
+  document.getElementById('midia-bloco').style.display = m?.ativo ? 'block' : 'none';
+  if (m?.ativo) {
+    document.getElementById('p-verba').value  = m.verba    || 0;
+    document.getElementById('p-tadmin').value = m.taxaAdmin || 15;
+  }
+}
+
+function setTipoCob(tipo, btn) {
+  document.getElementById('p-tipo').value = tipo;
+  btn.closest('.seg').querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('p-meses-g').style.display = tipo === 'mensal' ? 'block' : 'none';
+  showRegraByTipo(tipo);
+  calcPreco();
+}
+
+function showRegraByTipo(tipo) {
+  document.getElementById('regra-recorrente').style.display = tipo === 'mensal'  ? 'block' : 'none';
+  document.getElementById('regra-projeto').style.display    = tipo === 'projeto' ? 'block' : 'none';
+}
+
+function toggleMidia() {
+  document.getElementById('midia-bloco').style.display =
+    document.getElementById('p-midia').checked ? 'block' : 'none';
+}
+
+function renderModalItems() {
+  const el = document.getElementById('modal-items');
+  const entries = Object.entries(sel);
+  if (!entries.length) {
+    el.innerHTML = '<p style="font-size:13.5px;color:var(--muted);padding:6px 0;">Nenhum item selecionado.</p>';
+    return;
+  }
+
+  let html = entries.map(([id, qty]) => {
+    const c = custos.find(x => x.id === id);
+    if (!c) return '';
+    const val  = c.tipo === 'mes' ? c.valor : c.valor * qty;
+    const isColab = (c.categoria || 'colaborador') === 'colaborador';
+    const unit = c.tipo === 'hora' ? `${qty}h` : 'fixo';
+    return `<div class="rrow">
+      <span class="rk">${esc(c.nome)} <small style="opacity:.5">(${unit}${isColab && c.tipo === 'hora' ? ' no projeto' : ''})</small></span>
+      <span class="rv">${fmt(val)}</span>
+    </div>`;
+  }).join('');
+
+  const total = calcCusto();
+  html += `<div class="rrow" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--gold-mid);">
+    <span class="rk" style="font-weight:600">Custo total</span>
+    <span class="rv gold" style="font-size:15px;">${fmt(total)}</span>
+  </div>`;
+  el.innerHTML = html;
+}
+
+// =============================================
+//  FÓRMULA DE PRECIFICAÇÃO
+// =============================================
+
+function getParams() {
+  return {
+    custo:         calcCusto(),
+    margem:        parseFloat(document.getElementById('p-margem').value)  / 100,
+    taxaCart:      parseFloat(document.getElementById('p-cartao').value)  / 100  || 0,
+    imposto:       parseFloat(document.getElementById('p-imposto').value) / 100  || 0,
+    desconto:      parseFloat(document.getElementById('p-desc').value)    / 100  || 0,
+    descontoRec:   parseFloat(document.getElementById('p-drec').value)    || 0,
+    sobretaxaProj: parseFloat(document.getElementById('p-sproj').value)   || 0,
+    tipo:          document.getElementById('p-tipo').value,
+    meses:         parseInt(document.getElementById('p-meses').value)     || 1,
+    midiaOn:       document.getElementById('p-midia').checked,
+    verba:         parseFloat(document.getElementById('p-verba').value)   || 0,
+    taxaAdmin:     parseFloat(document.getElementById('p-tadmin').value)  / 100  || 0,
+    tier:          document.getElementById('p-tier').value || 'nenhum',
+  };
+}
+
+function computePreco(p) {
+  const custoEf = p.custo * (1 + p.imposto);
+
+  // 1. Preço base puro (custo + margem + taxa cartão)
+  const precoBase = custoEf > 0
+    ? custoEf / ((1 - p.margem) * (1 - p.taxaCart))
+    : 0;
+
+  // 2. Fator por tipo de contrato
+  const fatorTipo = p.tipo === 'mensal'
+    ? (1 - p.descontoRec / 100)
+    : (1 + p.sobretaxaProj / 100);
+
+  // 3. Fator de tier
+  const tierPct   = tiers[p.tier] || 0;
+  const fatorTier = 1 - tierPct / 100;
+
+  // 4. Preço ajustado (antes do desconto manual) = o que se cobra normalmente
+  const precoAjustado = precoBase * fatorTipo * fatorTier;
+
+  // 5. Desconto manual ad-hoc
+  const precoServ = precoAjustado * (1 - p.desconto);
+
+  // 6. Mídia
+  const adminVal = p.midiaOn ? p.verba * p.taxaAdmin : 0;
+  const total    = precoServ + adminVal;
+
+  // 7. Lucro e margem
+  const lucro   = precoServ - custoEf;
+  const margemR = precoServ > 0 ? (lucro / precoServ) * 100 : 0;
+
+  // 8. Margem de manobra (floor: 20%)
+  const precoMin = custoEf > 0
+    ? custoEf / ((1 - 0.20) * (1 - p.taxaCart))
+    : 0;
+  const espaco   = Math.max(0, precoAjustado - precoMin);
+  const maxDesc  = precoAjustado > 0 ? (espaco / precoAjustado) * 100 : 0;
+
+  return {
+    custoEf, precoBase, fatorTipo, tierPct, precoAjustado,
+    precoServ, adminVal, total, lucro, margemR,
+    precoMin, espaco, maxDesc,
+  };
+}
+
+function calcPreco() {
+  const p = getParams();
+  const r = computePreco(p);
+  const tem = p.custo > 0 || (p.midiaOn && p.verba > 0);
+
+  // Exibição do preço destaque
+  const precoBox = document.getElementById('preco-box');
+  const rcard    = document.getElementById('rcard');
+  const compSec  = document.getElementById('comp-sec');
+
+  precoBox.style.display = tem ? 'block' : 'none';
+  rcard.style.display    = tem ? 'block' : 'none';
+  compSec.style.display  = p.custo > 0 ? 'block' : 'none';
+
+  if (!tem) return;
+
+  // --- PREÇO DESTAQUE ---
+  document.getElementById('pb-val').textContent = fmt(r.precoAjustado);
+  document.getElementById('pb-sub').textContent =
+    p.tipo === 'mensal' ? 'Mensal do serviço' : 'Valor do projeto (fechado)';
+
+  // Ajustes aplicados
+  const ajustes = [];
+  if (p.descontoRec > 0 && p.tipo === 'mensal')
+    ajustes.push(`−${p.descontoRec}% desconto recorrência`);
+  if (p.sobretaxaProj > 0 && p.tipo === 'projeto')
+    ajustes.push(`+${p.sobretaxaProj}% adicional projeto único`);
+  if (r.tierPct > 0)
+    ajustes.push(`−${r.tierPct}% tier ${p.tier}`);
+  if (ajustes.length) {
+    const aj = document.getElementById('pb-ajustes');
+    aj.style.display = 'block';
+    aj.innerHTML = `Ajustes: ${ajustes.join(' · ')}<br>Preço base (sem ajustes): ${fmt(r.precoBase)}`;
+  } else {
+    document.getElementById('pb-ajustes').style.display = 'none';
+  }
+
+  // --- TAXA ADMIN MÍDIA ---
+  const showAdmin = p.midiaOn && r.adminVal > 0;
+  document.getElementById('r-admin-linha').style.display = showAdmin ? 'block' : 'none';
+  document.getElementById('r-admin-val').textContent = fmt(r.adminVal);
+
+  // Total proposta
+  document.getElementById('r-total-prop').style.display = showAdmin ? 'block' : 'none';
+  document.getElementById('r-total-val').textContent = fmt(r.total);
+
+  // Nota de mídia
+  if (p.midiaOn) {
+    const nota = document.getElementById('midia-nota');
+    nota.style.display = 'block';
+    nota.innerHTML = `Taxa de administração: <strong>${fmt(r.adminVal)}</strong>
+      (${(p.taxaAdmin * 100).toFixed(0)}% sobre verba de ${fmt(p.verba)} —
+      gerida na conta do cliente, não passa pela Two Dreamers)`;
+  } else {
+    document.getElementById('midia-nota').style.display = 'none';
+  }
+
+  // --- DESCONTO MANUAL ---
+  if (p.desconto > 0) {
+    document.getElementById('r-desc-bloco').style.display = 'block';
+    document.getElementById('r-orig').textContent     = fmt(r.precoAjustado);
+    document.getElementById('r-com-desc').textContent = fmt(r.precoServ);
+    document.getElementById('r-desc-pct').textContent =
+      `Desconto manual de ${(p.desconto * 100).toFixed(0)}%`;
+  } else {
+    document.getElementById('r-desc-bloco').style.display = 'none';
+  }
+
+  // --- MÉTRICAS ---
+  document.getElementById('r-custo').textContent  = fmt(r.custoEf);
+  document.getElementById('r-lucro').textContent  = fmt(r.lucro);
+  document.getElementById('r-margem').textContent = r.margemR.toFixed(1) + '%';
+
+  // --- MARGEM DE MANOBRA ---
+  if (p.custo > 0 && r.precoAjustado > 0) {
+    document.getElementById('r-manobra').style.display  = 'block';
+    document.getElementById('r-preco-min').textContent  = fmt(r.precoMin);
+    document.getElementById('r-max-desc').textContent   = r.maxDesc.toFixed(1) + '%';
+    document.getElementById('r-espaco').textContent     = fmt(r.espaco);
+  } else {
+    document.getElementById('r-manobra').style.display = 'none';
+  }
+
+  // --- BLOCO MESES ---
+  if (p.tipo === 'mensal' && p.meses > 1) {
+    document.getElementById('r-meses-bloco').style.display = 'block';
+    document.getElementById('r-mensal').textContent        = fmt(r.total);
+    document.getElementById('r-meses-lbl').textContent     = `Total do contrato (${p.meses} meses)`;
+    document.getElementById('r-contrato').textContent      = fmt(r.total * p.meses);
+  } else {
+    document.getElementById('r-meses-bloco').style.display = 'none';
+  }
+
+  // --- TABELA COMPARATIVA ---
+  renderCompTable(p, r);
+  renderModalItems();
+}
+
+function renderCompTable(p, r) {
+  const selectedM = Math.round(p.margem * 100);
+  const margens   = [30, 40, 50, 60, 70];
+  document.getElementById('comp-body').innerHTML = margens.map(m => {
+    const custoEf = p.custo * (1 + p.imposto);
+    const pb = custoEf > 0 ? custoEf / ((1 - m / 100) * (1 - p.taxaCart)) : 0;
+    const pa = pb * (p.tipo === 'mensal' ? (1 - p.descontoRec / 100) : (1 + p.sobretaxaProj / 100))
+                  * (1 - (tiers[p.tier] || 0) / 100);
+    const ps = pa * (1 - p.desconto);
+    const lc = ps - custoEf;
+    return `<tr class="${m === selectedM ? 'hl' : ''}">
+      <td>${m}%</td><td>${fmt(ps)}</td><td>${fmt(lc)}</td>
     </tr>`;
   }).join('');
 }
 
-// ════════════════════════════════════════════════════════════
-//  MODAL SALVAR MARMITA
-// ════════════════════════════════════════════════════════════
-function openSaveModal() {
-  if (custoTotal() === 0) {
-    showToast('⚠️ Adicione ingredientes com quantidade', '#d9534f'); return;
-  }
-  document.getElementById('salvar-nome').value = '';
-  if (document.getElementById('modal-margens').classList.contains('open'))
-    closeModal('modal-margens');
-  openModal('modal-salvar');
-  setTimeout(() => document.getElementById('salvar-nome').focus(), 220);
-}
+// =============================================
+//  CARRINHO
+// =============================================
 
-function confirmarSalvar() {
-  const nome = document.getElementById('salvar-nome').value.trim();
-  if (!nome) { showToast('⚠️ Digite um nome', '#d9534f'); return; }
-  const custo = custoTotal();
-  const pv    = calcPreco(custo, 60, 0, 0).precoBase;
-  const itens = Object.entries(selection)
-    .filter(([, s]) => s.qtd)
-    .map(([id, s]) => {
-      const ingr = ingredientes.find(i => i.id === id);
-      return ingr ? { id, nome: ingr.nome, qtd: s.qtd, unidade: ingr.unidade } : null;
-    }).filter(Boolean);
+function addToCart() {
+  const p    = getParams();
+  const r    = computePreco(p);
+  const nome = document.getElementById('p-nome').value.trim() || 'Sem nome';
+  const idx  = parseInt(document.getElementById('p-edit-idx').value);
 
-  salvas.unshift({
-    id: uid(), nome,
-    data: new Date().toLocaleDateString('pt-BR'),
-    custo, precoVenda: pv, itens
-  });
-  LS.set(LS_SALVAS, salvas);
-  closeModal('modal-salvar');
-  showToast(`✅ "${nome}" salva!`);
-}
-
-// ════════════════════════════════════════════════════════════
-//  SALVAS
-// ════════════════════════════════════════════════════════════
-function renderSalvas() {
-  const list  = document.getElementById('salvas-list');
-  const empty = document.getElementById('salvas-empty');
-  if (!salvas.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
-  empty.style.display = 'none';
-
-  list.innerHTML = salvas.map(s => {
-    const resumo = s.itens
-      .map(i => `${i.nome} ${i.qtd}${i.unidade === 'unidade' ? 'und' : 'g'}`)
-      .join(' · ');
-    return `
-    <div class="saved-item">
-      <div class="saved-item-head">
-        <div>
-          <div class="saved-item-name">👤 ${s.nome}</div>
-          <div class="saved-item-date">Cadastrado em ${s.data}</div>
-          <div class="saved-item-ingrs">${resumo}</div>
-        </div>
-        <div class="saved-item-price">R$ ${fmt(s.precoVenda)}</div>
-      </div>
-      <div class="saved-item-actions">
-        <button class="btn btn-success btn-sm" onclick="calcularSalva('${s.id}')">📊 Calcular</button>
-        <button class="btn btn-outline btn-sm" onclick="editSalva('${s.id}')">✏️ Editar</button>
-        <button class="btn btn-danger btn-sm"  onclick="apagarSalva('${s.id}')">🗑️</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function reabrirMarmita(id) {
-  const s = salvas.find(x => x.id === id);
-  if (!s) return;
-  selection = {};
-  s.itens.forEach(i => { selection[i.id] = { qtd: i.qtd }; });
-  showScreen('montar', document.querySelector('nav button'));
-  showToast(`🍽️ "${s.nome}" reaberta!`);
-}
-
-// Carrega ingredientes do cliente E abre o modal de cálculo direto
-function calcularSalva(id) {
-  const s = salvas.find(x => x.id === id);
-  if (!s) return;
-  selection = {};
-  s.itens.forEach(i => { selection[i.id] = { qtd: i.qtd }; });
-  showScreen('montar', document.querySelector('nav button'));
-  setTimeout(() => {
-    document.getElementById('modal-pedido-nome').value = s.nome;
-    openMargensModal();
-  }, 120);
-  showToast(`📊 Calculando marmita de ${s.nome}…`);
-}
-
-// ════════════════════════════════════════════════════════════
-//  CLIENTES — editar e adicionar ao pedido
-// ════════════════════════════════════════════════════════════
-function editSalva(id) {
-  const s = salvas.find(x => x.id === id);
-  if (!s) return;
-  editingSalvaId = id;
-  document.getElementById('edit-salva-nome').value  = s.nome;
-  document.getElementById('edit-salva-preco').value = s.precoVenda || '';
-  document.getElementById('edit-salva-qtd').value   = s.qtdPedido  || 1;
-  openModal('modal-edit-salva');
-}
-
-function confirmarEditSalva() {
-  const s = salvas.find(x => x.id === editingSalvaId);
-  if (!s) { closeModal('modal-edit-salva'); return; }
-  const nome  = document.getElementById('edit-salva-nome').value.trim();
-  const preco = R(document.getElementById('edit-salva-preco').value.replace(',','.'));
-  const qtd   = Math.max(1, parseInt(document.getElementById('edit-salva-qtd').value) || 1);
-  if (!nome || preco <= 0) { showToast('⚠️ Preencha nome e preço', '#d9534f'); return; }
-  s.nome       = nome;
-  s.precoVenda = preco;
-  s.qtdPedido  = qtd;
-  LS.set(LS_SALVAS, salvas);
-  closeModal('modal-edit-salva');
-  renderSalvas();
-  showToast(`✅ "${nome}" atualizado!`);
-}
-
-function adicionarSalvaAoPedido() {
-  const s = salvas.find(x => x.id === editingSalvaId);
-  if (!s) return;
-  const nome  = document.getElementById('edit-salva-nome').value.trim();
-  const preco = R(document.getElementById('edit-salva-preco').value.replace(',','.'));
-  const qtd   = Math.max(1, parseInt(document.getElementById('edit-salva-qtd').value) || 1);
-  if (!nome || preco <= 0) { showToast('⚠️ Preencha nome e preço', '#d9534f'); return; }
-
-  // ingrs no formato do carrinho (com id)
-  const ingrs = (s.itens || []).map(i => ({ id: i.id, nome: i.nome, qtd: i.qtd, unidade: i.unidade }));
-  const lucroUnit  = preco - (s.custo || 0);
-  const margemReal = preco > 0 ? (lucroUnit / preco) * 100 : 0;
-
-  cart.push({
-    id: uid(), nome, qtdMarmitas: qtd,
-    custoUnit: s.custo || 0,
-    precoUnit: preco,
-    lucroUnit, margemReal,
-    desconto: 0, taxa: 0, imposto: 0, margemAlvo: 60,
-    ingrs,
-    addedAt: new Date().toLocaleDateString('pt-BR')
-  });
-  LS.set(LS_CART, cart);
-  updateCartBadge();
-  closeModal('modal-edit-salva');
-  showToast(`✅ "${nome}" adicionada ao pedido!`);
-}
-
-function apagarSalva(id) {
-  if (!confirm('Apagar marmita salva?')) return;
-  salvas = salvas.filter(s => s.id !== id);
-  LS.set(LS_SALVAS, salvas);
-  renderSalvas();
-  showToast('🗑️ Apagada');
-}
-
-// ════════════════════════════════════════════════════════════
-//  PEDIDO — adicionar ao carrinho
-// ════════════════════════════════════════════════════════════
-function addToPedido() {
-  const nome = document.getElementById('modal-pedido-nome').value.trim();
-  if (!nome) { showToast('⚠️ Digite um nome para a marmita', '#d9534f'); return; }
-  const custo = custoTotal();
-  if (custo === 0) { showToast('⚠️ Adicione ingredientes com quantidade', '#d9534f'); return; }
-
-  const qtdMarmitas = Math.max(1, parseInt(document.getElementById('modal-qtd').value) || 1);
-  const taxa        = R(document.getElementById('modal-taxa').value);
-  const imposto     = R(document.getElementById('modal-imposto').value);
-  const desconto    = R(document.getElementById('modal-desconto').value);
-  const margemAlvo  = parseInt(document.getElementById('modal-margem-alvo').value) || 60;
-
-  const r    = calcPreco(custo, margemAlvo, taxa, imposto);
-  const disc = calcComDesconto(r.precoBase, desconto, taxa, r.custoEfetivo);
-
-  // precoUnit = preço que o cliente paga (com desconto se houver)
-  const precoUnit = disc ? disc.precoFinal : r.precoBase;
-  const lucroUnit = disc ? disc.lucro      : r.lucro;
-  const margemReal = disc ? disc.margemReal : r.margemReal;
-
-  // snapshot dos ingredientes (com id para permitir edição futura)
-  const ingrsSnap = Object.entries(selection)
-    .filter(([, s]) => s.qtd)
-    .map(([id, s]) => {
-      const ingr = ingredientes.find(i => i.id === id);
-      return ingr ? { id, nome: ingr.nome, qtd: s.qtd, unidade: ingr.unidade } : null;
-    }).filter(Boolean);
-
-  const novoItem = {
-    id:        editingCartIdx !== null ? cart[editingCartIdx].id : uid(),
-    nome,      qtdMarmitas,
-    custoUnit: custo,
-    precoUnit, lucroUnit, margemReal,
-    desconto,  taxa, imposto, margemAlvo,
-    ingrs:     ingrsSnap,
-    addedAt:   new Date().toLocaleDateString('pt-BR')
+  const item = {
+    id:            idx >= 0 ? cart[idx].id : uid(),
+    nomeServico:   nome,
+    tipo:          p.tipo,
+    margem:        Math.round(p.margem    * 100),
+    taxaCartao:    Math.round(p.taxaCart  * 1000) / 10,
+    imposto:       Math.round(p.imposto   * 1000) / 10,
+    desconto:      Math.round(p.desconto  * 100),
+    descontoRec:   p.descontoRec,
+    sobretaxaProj: p.sobretaxaProj,
+    meses:         p.meses,
+    tier:          p.tier,
+    itens:         Object.entries(sel).map(([id, qtd]) => ({ id, qtd })),
+    midia:         p.midiaOn
+      ? { ativo: true, verba: p.verba, taxaAdmin: Math.round(p.taxaAdmin * 1000) / 10 }
+      : null,
+    escopo:        document.getElementById('p-escopo').value.trim(),
+    custoTotal:    p.custo,
+    precoBase:     r.precoBase,
+    precoAjustado: r.precoAjustado,
+    precoServico:  r.precoServ,
+    taxaAdminVal:  r.adminVal,
+    precoTotal:    r.total,
+    lucro:         r.lucro,
+    margemReal:    r.margemR,
   };
 
-  if (editingCartIdx !== null) {
-    cart[editingCartIdx] = novoItem;
-    editingCartIdx = null;
-    resetAddBtn();
-    showToast(`✅ "${nome}" atualizada no pedido!`);
+  if (idx >= 0) {
+    cart[idx] = item;
+    toast('✅ Item atualizado no pedido');
   } else {
-    cart.push(novoItem);
-    showToast(`✅ "${nome}" adicionada ao pedido!`);
+    cart.push(item);
+    toast('✅ Adicionado ao pedido');
   }
 
-  LS.set(LS_CART, cart);
-  updateCartBadge();
-  document.getElementById('modal-pedido-nome').value = '';
-  closeModal('modal-margens');
+  persist('td_cart', cart);
+  updCartBadge();
+  closeModal('ov-calc');
 }
 
-// ════════════════════════════════════════════════════════════
-//  PEDIDO — editar item do carrinho
-// ════════════════════════════════════════════════════════════
-function editCartItem(idx) {
-  const item = cart[idx];
-  if (!item) return;
-
-  // Restaura a seleção de ingredientes do snapshot
-  selection = {};
-  (item.ingrs || []).forEach(i => { selection[i.id] = { qtd: i.qtd }; });
-
-  // Vai para a tela Montar com ingredientes carregados
-  showScreen('montar', document.querySelector('nav button'));
-
-  editingCartIdx = idx;
-
-  setTimeout(() => {
-    // Pré-preenche campos do modal
-    document.getElementById('modal-pedido-nome').value  = item.nome;
-    document.getElementById('modal-qtd').value          = item.qtdMarmitas;
-    document.getElementById('modal-taxa').value         = item.taxa    || 0;
-    document.getElementById('modal-imposto').value      = item.imposto || 0;
-    document.getElementById('modal-desconto').value     = item.desconto || 0;
-    document.getElementById('modal-margem-alvo').value  = item.margemAlvo || 60;
-
-    // Muda botão para modo edição
-    document.getElementById('btn-add-pedido').textContent  = '💾 Salvar edição';
-    document.getElementById('btn-cancel-edit').style.display = 'block';
-
-    openMargensModal();
-  }, 120);
+function updCartBadge() {
+  const el = document.getElementById('cart-badge');
+  el.style.display = cart.length ? 'flex' : 'none';
+  el.textContent   = cart.length;
 }
 
-function cancelEditCart() {
-  editingCartIdx = null;
-  resetAddBtn();
-  closeModal('modal-margens');
-}
+function renderCart() {
+  const listEl   = document.getElementById('cart-list');
+  const totalsEl = document.getElementById('cart-totals');
+  const actsEl   = document.getElementById('cart-acts');
+  const obsGroup = document.getElementById('obs-group');
 
-function resetAddBtn() {
-  const btn = document.getElementById('btn-add-pedido');
-  if (btn) btn.textContent = '➕ Adicionar ao Pedido';
-  const cancel = document.getElementById('btn-cancel-edit');
-  if (cancel) cancel.style.display = 'none';
-}
-
-// ════════════════════════════════════════════════════════════
-//  FRETE
-// ════════════════════════════════════════════════════════════
-function updateFrete(val) {
-  frete = Math.max(0, R(String(val).replace(',','.')));
-  LS.set(LS_FRETE, frete);
-  updateOrderTotal();
-}
-
-function updateOrderTotal() {
-  const totBox = document.getElementById('cart-order-total');
-  if (!cart.length || !totBox) return;
-  const totalItems    = cart.reduce((s, i) => s + i.precoUnit  * i.qtdMarmitas, 0);
-  const totalLucro    = cart.reduce((s, i) => s + i.lucroUnit  * i.qtdMarmitas, 0);
-  const totalMarmitas = cart.reduce((s, i) => s + i.qtdMarmitas, 0);
-  const totalComFrete = totalItems + frete;
-
-  totBox.innerHTML = `
-  <div class="order-total">
-    <div class="ot-row"><span>Total de marmitas</span><span>${totalMarmitas} un.</span></div>
-    ${frete > 0 ? `<div class="ot-row"><span>Subtotal</span><span>R$ ${fmt(totalItems)}</span></div>
-    <div class="ot-row"><span>🚚 Frete</span><span>R$ ${fmt(frete)}</span></div>` : ''}
-    <div class="ot-row ot-lucro"><span>Lucro estimado</span><span>+R$ ${fmt(totalLucro)}</span></div>
-    <div class="ot-main"><span>TOTAL</span><span>R$ ${fmt(totalComFrete)}</span></div>
-  </div>`;
-}
-
-// ════════════════════════════════════════════════════════════
-//  PEDIDO — render carrinho
-// ════════════════════════════════════════════════════════════
-function renderPedido() {
-  const list   = document.getElementById('cart-list');
-  const empty  = document.getElementById('cart-empty');
-  const totBox = document.getElementById('cart-order-total');
-  const actBox = document.getElementById('cart-actions');
-
-  const freteSection = document.getElementById('frete-section');
-  const freteInput   = document.getElementById('frete-input');
+  loadObs();
 
   if (!cart.length) {
-    list.innerHTML = ''; totBox.innerHTML = '';
-    empty.style.display = 'block'; actBox.style.display = 'none';
-    if (freteSection) freteSection.style.display = 'none';
+    listEl.innerHTML = `<div class="empty">
+      <div class="eic">📋</div>
+      <p>Nenhum item ainda.<br>Vá em <strong>Calcular</strong> para montar sua proposta.</p>
+    </div>`;
+    totalsEl.innerHTML = '';
+    actsEl.style.display   = 'none';
+    obsGroup.style.display = 'none';
     return;
   }
-  empty.style.display = 'none'; actBox.style.display = 'block';
-  if (freteSection) freteSection.style.display = 'block';
-  if (freteInput && freteInput.value === '' && frete > 0) freteInput.value = frete;
 
-  list.innerHTML = cart.map((item, idx) => {
-    const totalCliente = item.precoUnit  * item.qtdMarmitas;
-    const totalLucro   = item.lucroUnit  * item.qtdMarmitas;
-    const extras = [
-      item.taxa     > 0 ? `cartão ${item.taxa}%`       : '',
-      item.imposto  > 0 ? `imposto ${item.imposto}%`   : '',
-      item.desconto > 0 ? `desconto ${item.desconto}%` : '',
-    ].filter(Boolean).join(' · ') || 'Sem taxas/desconto';
+  actsEl.style.display   = 'block';
+  obsGroup.style.display = 'block';
 
-    return `
-    <div class="cart-item">
-      <div class="cart-item-top">
-        <div style="flex:1;min-width:0">
-          <div class="cart-item-nome">${item.nome}</div>
-          <div class="cart-item-meta">
-            ${item.qtdMarmitas} marmita${item.qtdMarmitas > 1 ? 's' : ''}
-            × R$ ${fmt(item.precoUnit)} · margem ${item.margemAlvo}%
-          </div>
-          <div class="cart-item-meta">${extras}</div>
-          <div class="cart-item-lucro">
-            ✅ Lucro: R$ ${fmt(totalLucro)} (${fmt1(item.margemReal)}% real)
-          </div>
-        </div>
-        <div style="text-align:right;flex-shrink:0;margin-left:10px">
-          <div class="cart-item-total">R$ ${fmt(totalCliente)}</div>
-          <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end">
-            <button class="btn btn-outline btn-sm" onclick="editCartItem(${idx})">✏️</button>
-            <button class="btn btn-danger btn-sm"  onclick="removeCartItem(${idx})">🗑️</button>
-          </div>
+  listEl.innerHTML = cart.map((it, i) => {
+    const tierLabel = it.tier && it.tier !== 'nenhum'
+      ? `&nbsp;·&nbsp;<span class="tier-${it.tier}">${
+          { prata:'🥈 Prata', ouro:'🥇 Ouro', diamante:'💎 Diamante' }[it.tier]
+        }</span>` : '';
+    const totalContrato = it.tipo === 'mensal' && it.meses > 1
+      ? ` <span style="font-size:13px;color:var(--muted)">&nbsp;× ${it.meses} meses = ${fmt(it.precoTotal * it.meses)}</span>`
+      : '';
+
+    const regraInfo = [];
+    if ((it.descontoRec || 0) > 0 && it.tipo === 'mensal')
+      regraInfo.push(`−${it.descontoRec}% recorrência`);
+    if ((it.sobretaxaProj || 0) > 0 && it.tipo === 'projeto')
+      regraInfo.push(`+${it.sobretaxaProj}% projeto único`);
+    if (it.tier && it.tier !== 'nenhum' && tiers[it.tier])
+      regraInfo.push(`−${tiers[it.tier]}% ${it.tier}`);
+
+    return `<div class="citem">
+      <div class="citem-hd">
+        <div class="citem-name">${esc(it.nomeServico)}</div>
+        <div class="citem-acts">
+          <button class="btn btn-ghost btn-sm" onclick="editCart(${i})">✏️</button>
+          <button class="btn btn-danger btn-sm" onclick="remCart(${i})">🗑️</button>
         </div>
       </div>
+      <div class="citem-meta">
+        ${it.tipo === 'mensal'
+          ? `Mensal · ${it.meses} ${it.meses > 1 ? 'meses' : 'mês'}`
+          : 'Projeto único'}
+        &nbsp;·&nbsp; Margem ${it.margem}%${tierLabel}
+        ${it.desconto > 0 ? ` · Desconto ${it.desconto}%` : ''}
+        ${regraInfo.length ? `<br>📐 ${regraInfo.join(' · ')}` : ''}
+        ${it.midia ? `<br>🎯 Verba de mídia ${fmt(it.midia.verba)} — taxa ${fmt(it.taxaAdminVal)}` : ''}
+      </div>
+      <div class="citem-price">${fmt(it.precoTotal)}${totalContrato}</div>
+      ${it.escopo ? `<div class="citem-escopo">📝 ${esc(it.escopo)}</div>` : ''}
     </div>`;
   }).join('');
 
-  updateOrderTotal();
+  const totServ  = cart.reduce((s, i) => s + i.precoServico, 0);
+  const totAdmin = cart.reduce((s, i) => s + (i.taxaAdminVal || 0), 0);
+  const totGeral = cart.reduce((s, i) => s + i.precoTotal, 0);
+  const totLucro = cart.reduce((s, i) => s + i.lucro, 0);
+
+  totalsEl.innerHTML = `
+    <div class="tcard">
+      <div class="trow"><span class="tk">Itens na proposta</span><span>${cart.length}</span></div>
+      <div class="trow"><span class="tk">Subtotal serviços</span><span>${fmt(totServ)}</span></div>
+      ${totAdmin > 0 ? `<div class="trow"><span class="tk">Total taxas de administração</span><span>${fmt(totAdmin)}</span></div>` : ''}
+      <div class="trow"><span class="tk">Lucro estimado</span><span style="color:var(--success)">${fmt(totLucro)}</span></div>
+      <div class="trow big"><span>TOTAL GERAL</span><span>${fmt(totGeral)}</span></div>
+    </div>`;
 }
 
-function removeCartItem(idx) {
-  if (!confirm('Remover este item?')) return;
+function editCart(idx) {
+  const it = cart[idx];
+  sel = {};
+  (it.itens || []).forEach(x => { sel[x.id] = x.qtd; });
+  renderCselList();
+  updatePbar();
+  openCalc(idx);
+}
+
+function remCart(idx) {
   cart.splice(idx, 1);
-  LS.set(LS_CART, cart);
-  updateCartBadge();
-  renderPedido();
-  showToast('🗑️ Item removido');
+  persist('td_cart', cart);
+  updCartBadge();
+  renderCart();
+  toast('🗑️ Item removido');
 }
 
-function limparPedido() {
-  if (!confirm('Limpar todo o pedido?')) return;
+function clearCart() {
+  if (!confirm('Limpar todo o pedido atual?')) return;
   cart = [];
-  LS.set(LS_CART, cart);
-  updateCartBadge();
-  renderPedido();
-  showToast('🗑️ Pedido limpo');
+  persist('td_cart', cart);
+  updCartBadge();
+  renderCart();
+  toast('Pedido limpo');
 }
 
-function updateCartBadge() {
-  const tab = document.getElementById('tab-pedido');
-  const n   = cart.length;
-  const old = tab.querySelector('.tab-badge');
-  if (old) old.remove();
-  if (n > 0) tab.innerHTML = `📋<span class="tab-badge">${n}</span><br>Pedido`;
-  else        tab.innerHTML = `📋<br>Pedido`;
-}
+// =============================================
+//  RESUMO DA PROPOSTA
+// =============================================
 
-// ════════════════════════════════════════════════════════════
-//  RESUMO DO PEDIDO
-// ════════════════════════════════════════════════════════════
-// Palavras-chave de embalagem — excluídas do resumo do cliente
-const EMBALAGEM = ['pote', 'rótulo', 'etiqueta', 'embalagem', 'tampa', 'saco', 'bandeja'];
+function openSummary() {
+  const body = document.getElementById('sum-body');
+  const data = fmtDate();
 
-function isFoodItem(ingr) {
-  const n = (ingr.nome || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
-  return !EMBALAGEM.some(kw => n.includes(kw.normalize('NFD').replace(/[̀-ͯ]/g,'')));
-}
+  let html = `<div class="sum-brand">Two Dreamers</div>
+    <div class="sum-date">Proposta gerada em ${data}</div>`;
 
-function formatIngredientQty(ingr) {
-  if (ingr.unidade === 'kg') return `${Math.round(ingr.qtd * 1000)}g`;
-  if (ingr.unidade === 'g')  return `${ingr.qtd}g`;
-  return `${ingr.qtd}`;
-}
-
-function openResumoModal() {
-  if (!cart.length) { showToast('⚠️ Pedido está vazio', '#d9534f'); return; }
-
-  const hoje = new Date().toLocaleDateString('pt-BR');
-  const div  = '─'.repeat(36);
-  let txt = `🍱 ORÇAMENTO — Sabor da Vó Fátima\n`;
-  txt    += `Data: ${hoje}\n`;
-  txt    += `${div}\n\n`;
-
-  let subtotal = 0;
-
-  cart.forEach(item => {
-    const total = item.precoUnit * item.qtdMarmitas;
-    subtotal   += total;
-
-    txt += `🍱 ${item.nome}\n`;
-
-    // Ingredientes alimentícios (sem pote/etiqueta e sem preço)
-    const foodIngrs = (item.ingrs || []).filter(isFoodItem);
-    if (foodIngrs.length) {
-      const ingrStr = foodIngrs.map(i => `${i.nome} ${formatIngredientQty(i)}`).join(' · ');
-      txt += `   ${ingrStr}\n`;
-    }
-
-    txt += `   ${item.qtdMarmitas} marmita${item.qtdMarmitas > 1 ? 's' : ''} × R$ ${fmt(item.precoUnit)} = R$ ${fmt(total)}\n`;
-    if (item.desconto > 0) txt += `   🏷️ Desconto de ${item.desconto}% aplicado\n`;
-    txt += `\n`;
+  cart.forEach(it => {
+    const tipoLabel = it.tipo === 'mensal'
+      ? `Recorrente — ${it.meses} ${it.meses > 1 ? 'meses' : 'mês'}`
+      : 'Projeto único (valor fechado)';
+    html += `<div class="sum-item">
+      <div class="sum-iname">${esc(it.nomeServico)}</div>
+      <div class="sum-itype">${tipoLabel}</div>
+      <div class="sum-iprice">${fmt(it.precoServico)}</div>
+      ${it.escopo ? `<div class="sum-inote">📝 ${esc(it.escopo)}</div>` : ''}
+      ${it.midia && it.taxaAdminVal > 0 ? `
+        <div class="sum-inote">
+          🎯 Gestão de mídia paga: ${fmt(it.taxaAdminVal)}/mês<br>
+          A verba de mídia (${fmt(it.midia.verba)}/mês) é gerida na conta do cliente —
+          não transita pelo caixa da Two Dreamers.
+        </div>` : ''}
+    </div>`;
   });
 
-  txt += `${div}\n`;
-  if (frete > 0) {
-    txt += `Subtotal:  R$ ${fmt(subtotal)}\n`;
-    txt += `🚚 Frete:  R$ ${fmt(frete)}\n`;
-    txt += `${div}\n`;
-    txt += `TOTAL: R$ ${fmt(subtotal + frete)}\n`;
-  } else {
-    txt += `TOTAL: R$ ${fmt(subtotal)}\n`;
-  }
-  txt += `${div}\n\n`;
+  const totServ  = cart.reduce((s, i) => s + i.precoServico, 0);
+  const totAdmin = cart.reduce((s, i) => s + (i.taxaAdminVal || 0), 0);
+  const totGeral = cart.reduce((s, i) => s + i.precoTotal, 0);
 
-  txt += `💳 FORMAS DE PAGAMENTO\n`;
-  txt += `✅ PIX — sem nenhum acréscimo\n`;
-  txt += `✅ Débito — sem nenhum acréscimo\n`;
-  txt += `💳 Crédito — com repasse da taxa operacional\n`;
-  txt += `   (confirmamos o valor exato no fechamento,\n`;
-  txt += `    sem surpresas!)\n\n`;
+  html += `<div style="margin-top:14px;">
+    ${totAdmin > 0 ? `
+      <div style="display:flex;justify-content:space-between;font-size:14px;color:var(--muted);padding:5px 0;">
+        <span>Subtotal serviços</span><span>${fmt(totServ)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:14px;color:var(--muted);padding:5px 0;">
+        <span>Gestão de mídia paga</span><span>${fmt(totAdmin)}</span>
+      </div>` : ''}
+    <div class="sum-total"><span>Total</span><span style="color:var(--gold)">${fmt(totGeral)}</span></div>
+  </div>
+  <div class="sum-pay">
+    <strong style="color:var(--gold)">Formas de pagamento</strong><br>
+    ✅ PIX — sem acréscimo<br>
+    ✅ Boleto / transferência bancária — sem acréscimo<br>
+    💳 Cartão — taxa operacional repassada (confirmada no fechamento)
+  </div>
+  ${obs ? `<div class="sum-pay" style="margin-top:12px;"><strong style="color:var(--gold)">Observações</strong><br>${esc(obs).replace(/\n/g,'<br>')}</div>` : ''}
+  <div class="sum-footer">
+    Fico à disposição para tirar dúvidas e alinhar os detalhes.
+    Assim que você confirmar, seguimos para os próximos passos.
+  </div>
+  <div class="gap2"></div>
+  <button class="btn btn-outline btn-full" onclick="copySummary()">📋 Copiar proposta</button>
+  <div class="gap"></div>`;
 
-  txt += `Obrigada pela preferência! 🍱❤️\n`;
-  txt += `Aguardando sua confirmação para envio do link de pagamento.`;
-
-  document.getElementById('resumo-texto').textContent = txt;
-  openModal('modal-resumo');
+  body.innerHTML = html;
+  openModal('ov-sum');
 }
 
-function copiarResumo() {
-  const txt = document.getElementById('resumo-texto').textContent;
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(txt).then(() => showToast('✅ Texto copiado!'));
+function copySummary() {
+  const data = fmtDate();
+  let txt = `Two Dreamers — Proposta\n${data}\n\n`;
+  cart.forEach(it => {
+    const tipoLabel = it.tipo === 'mensal'
+      ? `Recorrente — ${it.meses} ${it.meses > 1 ? 'meses' : 'mês'}`
+      : 'Projeto único';
+    txt += `📌 ${it.nomeServico}\n   ${tipoLabel}\n   ${fmt(it.precoServico)}\n`;
+    if (it.escopo) txt += `   Escopo: ${it.escopo}\n`;
+    if (it.midia && it.taxaAdminVal > 0)
+      txt += `   🎯 Gestão de mídia: ${fmt(it.taxaAdminVal)}/mês (verba ${fmt(it.midia.verba)} na conta do cliente)\n`;
+    txt += '\n';
+  });
+  const totGeral = cart.reduce((s, i) => s + i.precoTotal, 0);
+  txt += `─────────────────────────\nTOTAL: ${fmt(totGeral)}\n\n`;
+  txt += `✅ PIX — sem acréscimo\n✅ Boleto / transferência — sem acréscimo\n💳 Cartão — taxa repassada\n`;
+  if (obs) txt += `\nObservações:\n${obs}\n`;
+  copyText(txt);
+}
+
+// =============================================
+//  CONTRATO
+// =============================================
+
+function openContract() {
+  loadObs();
+  const co = document.getElementById('contract-obs');
+  if (co) co.value = obs;
+  renderContractPreview();
+  openModal('ov-contract');
+}
+
+function renderContractPreview() {
+  const el = document.getElementById('contract-preview');
+  if (!el) return;
+  el.textContent = buildContractText();
+}
+
+function buildContractText() {
+  const data = fmtDate();
+  const obsLocal = document.getElementById('contract-obs')?.value || obs;
+
+  let txt = '';
+  txt += `PROPOSTA COMERCIAL\n`;
+  txt += `Two Dreamers — Marketing Digital\n`;
+  txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  txt += `Data: ${data}\n`;
+  txt += `Validade da proposta: 15 dias\n\n`;
+
+  txt += `SERVIÇOS CONTRATADOS\n`;
+  txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  cart.forEach((it, i) => {
+    const tipoLabel = it.tipo === 'mensal'
+      ? `Recorrente — ${it.meses} ${it.meses > 1 ? 'meses' : 'mês'}`
+      : 'Projeto único (valor fechado)';
+    txt += `${i + 1}. ${it.nomeServico}\n`;
+    txt += `   Tipo: ${tipoLabel}\n`;
+    if (it.tier && it.tier !== 'nenhum') {
+      const tl = { prata: 'Prata', ouro: 'Ouro', diamante: 'Diamante' }[it.tier];
+      txt += `   Tier do cliente: ${tl}\n`;
+    }
+    if (it.escopo) {
+      txt += `   Escopo:\n`;
+      it.escopo.split('\n').forEach(l => { txt += `     ${l}\n`; });
+    }
+
+    // Colaboradores alocados
+    const colabs = (it.itens || []).filter(x => {
+      const c = custos.find(cx => cx.id === x.id);
+      return c && (c.categoria || 'colaborador') === 'colaborador' && c.tipo === 'hora';
+    });
+    if (colabs.length) {
+      txt += `   Equipe alocada:\n`;
+      colabs.forEach(x => {
+        const c = custos.find(cx => cx.id === x.id);
+        if (c) txt += `     • ${c.nome}: ${x.qtd}h ${it.tipo === 'mensal' ? '/mês' : 'no projeto'}\n`;
+      });
+    }
+
+    txt += `   Valor: ${fmt(it.precoServico)}\n`;
+    if (it.tipo === 'mensal' && it.meses > 1)
+      txt += `   Total do contrato (${it.meses} meses): ${fmt(it.precoServico * it.meses)}\n`;
+    if (it.midia && it.taxaAdminVal > 0) {
+      txt += `   + Gestão de mídia paga: ${fmt(it.taxaAdminVal)}/mês\n`;
+      txt += `     (Verba de ${fmt(it.midia.verba)}/mês gerida na conta do cliente)\n`;
+    }
+    txt += '\n';
+  });
+
+  const totServ  = cart.reduce((s, x) => s + x.precoServico, 0);
+  const totAdmin = cart.reduce((s, x) => s + (x.taxaAdminVal || 0), 0);
+  const totGeral = cart.reduce((s, x) => s + x.precoTotal, 0);
+
+  txt += `INVESTIMENTO\n`;
+  txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  if (totAdmin > 0) {
+    txt += `Subtotal de serviços: ${fmt(totServ)}\n`;
+    txt += `Gestão de mídia paga: ${fmt(totAdmin)}\n`;
+  }
+  txt += `TOTAL: ${fmt(totGeral)}\n\n`;
+
+  txt += `FORMAS DE PAGAMENTO\n`;
+  txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  txt += `✅ PIX — sem acréscimo\n`;
+  txt += `✅ Boleto / transferência bancária — sem acréscimo\n`;
+  txt += `💳 Cartão de crédito — taxa operacional repassada ao contratante\n\n`;
+
+  if (obsLocal.trim()) {
+    txt += `OBSERVAÇÕES E CONDIÇÕES\n`;
+    txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    txt += obsLocal.trim() + '\n\n';
+  }
+
+  txt += `ACEITE E ASSINATURA\n`;
+  txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  txt += `Two Dreamers: _________________________  Data: ___/___/______\n\n`;
+  txt += `Cliente: ______________________________  Data: ___/___/______\n`;
+
+  return txt;
+}
+
+function copyContract() {
+  copyText(buildContractText());
+}
+
+function copyText(txt) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(txt).then(() => toast('📋 Copiado!'));
   } else {
     const ta = document.createElement('textarea');
     ta.value = txt;
+    ta.style.cssText = 'position:fixed;opacity:0';
     document.body.appendChild(ta);
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    showToast('✅ Texto copiado!');
+    toast('📋 Copiado!');
   }
 }
 
-// ════════════════════════════════════════════════════════════
-//  MODAL HELPERS
-// ════════════════════════════════════════════════════════════
-function openModal(id)  { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+// =============================================
+//  SALVAR MODELO
+// =============================================
 
-document.querySelectorAll('.modal-overlay').forEach(el => {
-  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
-});
+function saveModel() {
+  const itens = Object.entries(sel).map(([id, qtd]) => ({ id, qtd }));
+  if (!itens.length) { toast('❌ Selecione ao menos um item'); return; }
+  const nome = prompt('Nome do modelo:');
+  if (!nome?.trim()) return;
 
-// ════════════════════════════════════════════════════════════
-//  TOAST
-// ════════════════════════════════════════════════════════════
-let _toastTimer = null;
-function showToast(msg, bg = '#5B7B4F') {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.style.background = bg;
-  t.classList.add('show');
-  clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+  const midiaOn = document.getElementById('p-midia').checked;
+  modelos.push({
+    id: uid(), nome: nome.trim(), itens,
+    tipoMidia: midiaOn ? {
+      ativo:     true,
+      verba:     parseFloat(document.getElementById('p-verba').value)  || 0,
+      taxaAdmin: parseFloat(document.getElementById('p-tadmin').value) || 15,
+    } : null,
+    criadoEm: Date.now(),
+  });
+  persist('td_modelos', modelos);
+  toast(`✅ Modelo "${nome.trim()}" salvo`);
 }
 
-// ════════════════════════════════════════════════════════════
-//  FORMATAÇÃO
-// ════════════════════════════════════════════════════════════
-function fmt(n)  { return (isNaN(n) || !n ? 0 : n).toFixed(2).replace('.', ','); }
-function fmt1(n) { return (isNaN(n) || !n ? 0 : n).toFixed(1).replace('.', ','); }
+// =============================================
+//  SALVAR CLIENTE
+// =============================================
 
-// ════════════════════════════════════════════════════════════
-//  INIT
-// ════════════════════════════════════════════════════════════
-renderModelos();
-renderMontar();
-updatePriceBar();
-updateCartBadge();
+function saveClient() {
+  const nome = document.getElementById('p-nome').value.trim();
+  if (!nome) { toast('❌ Informe o nome do cliente'); return; }
 
+  const p  = getParams();
+  const r  = computePreco(p);
+  const existing = clientes.find(c => c.nome.toLowerCase() === nome.toLowerCase());
+  const id = existing?.id || uid();
+
+  const data = {
+    id, nome,
+    tipo:          p.tipo, margem: Math.round(p.margem * 100),
+    taxaCartao:    Math.round(p.taxaCart  * 1000) / 10,
+    imposto:       Math.round(p.imposto   * 1000) / 10,
+    desconto:      Math.round(p.desconto  * 100),
+    descontoRec:   p.descontoRec,
+    sobretaxaProj: p.sobretaxaProj,
+    meses:         p.meses,
+    tier:          p.tier,
+    itens:         Object.entries(sel).map(([id, qtd]) => ({ id, qtd })),
+    midia:         p.midiaOn
+      ? { ativo: true, verba: p.verba, taxaAdmin: Math.round(p.taxaAdmin * 1000) / 10 }
+      : null,
+    escopo:        document.getElementById('p-escopo').value.trim(),
+    custoTotal:    p.custo,
+    precoServico:  r.precoServ,
+    taxaAdminVal:  r.adminVal,
+    precoTotal:    r.total,
+    lucro:         r.lucro,
+    data:          new Date().toLocaleDateString('pt-BR'),
+    criadoEm:      Date.now(),
+  };
+
+  const idx = clientes.findIndex(c => c.id === id);
+  if (idx >= 0) { clientes[idx] = data; toast(`✅ "${nome}" atualizado`); }
+  else          { clientes.push(data);  toast(`✅ "${nome}" salvo`); }
+  persist('td_clientes', clientes);
+}
+
+// =============================================
+//  ABA CLIENTES
+// =============================================
+
+function renderClients() {
+  const el = document.getElementById('clients-list');
+  if (!clientes.length) {
+    el.innerHTML = `<div class="empty">
+      <div class="eic">👥</div>
+      <p>Nenhum cliente salvo ainda.<br>Calcule um preço e clique em "Salvar cliente".</p>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = clientes.map(c => {
+    const tierLabel = c.tier && c.tier !== 'nenhum'
+      ? `&nbsp;·&nbsp;<span class="tier-${c.tier}">${
+          { prata:'🥈 Prata', ouro:'🥇 Ouro', diamante:'💎 Diamante' }[c.tier]
+        }</span>` : '';
+    return `<div class="clcard">
+      <div class="clcard-hd">
+        <div class="clcard-name">${esc(c.nome)}</div>
+        <button class="btn btn-danger btn-sm" onclick="delClient('${c.id}')">🗑️</button>
+      </div>
+      <div class="clcard-meta">
+        ${c.data} &nbsp;·&nbsp;
+        ${c.tipo === 'mensal' ? `Mensal · ${c.meses} meses` : 'Projeto único'}
+        &nbsp;·&nbsp; Margem ${c.margem}%${tierLabel}
+      </div>
+      <div class="clcard-price">${fmt(c.precoTotal)}</div>
+      <div class="clcard-acts">
+        <button class="btn btn-outline btn-sm" onclick="recalcClient('${c.id}')">📊 Recalcular</button>
+        <button class="btn btn-ghost btn-sm" onclick="openEditClient('${c.id}')">✏️ Editar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function delClient(id) {
+  clientes = clientes.filter(c => c.id !== id);
+  persist('td_clientes', clientes);
+  renderClients();
+  toast('🗑️ Cliente removido');
+}
+
+function recalcClient(id) {
+  const c = clientes.find(x => x.id === id);
+  if (!c) return;
+
+  sel = {};
+  (c.itens || []).forEach(it => { sel[it.id] = it.qtd; });
+
+  document.getElementById('p-nome').value    = c.nome;
+  document.getElementById('p-margem').value  = c.margem || 50;
+  document.getElementById('p-margem-d').textContent = (c.margem || 50) + '%';
+  document.getElementById('p-cartao').value  = c.taxaCartao || 0;
+  document.getElementById('p-imposto').value = c.imposto    || 0;
+  document.getElementById('p-desc').value    = c.desconto   || 0;
+  document.getElementById('p-desc-d').textContent = (c.desconto || 0) + '%';
+  document.getElementById('p-drec').value    = c.descontoRec   || 0;
+  document.getElementById('p-drec-d').textContent = (c.descontoRec || 0) + '%';
+  document.getElementById('p-sproj').value   = c.sobretaxaProj || 0;
+  document.getElementById('p-sproj-d').textContent = (c.sobretaxaProj || 0) + '%';
+  document.getElementById('p-tier').value    = c.tier || 'nenhum';
+  document.getElementById('p-escopo').value  = c.escopo || '';
+
+  const tipo = c.tipo || 'mensal';
+  document.getElementById('p-tipo').value    = tipo;
+  document.getElementById('p-meses').value   = c.meses || 1;
+  document.getElementById('p-meses-g').style.display = tipo === 'mensal' ? 'block' : 'none';
+  showRegraByTipo(tipo);
+
+  if (c.midia?.ativo) {
+    document.getElementById('p-midia').checked = true;
+    document.getElementById('p-verba').value   = c.midia.verba    || 0;
+    document.getElementById('p-tadmin').value  = c.midia.taxaAdmin || 15;
+    document.getElementById('midia-bloco').style.display = 'block';
+  } else {
+    document.getElementById('p-midia').checked = false;
+    document.getElementById('midia-bloco').style.display = 'none';
+  }
+
+  switchTab('calcular');
+  setTimeout(() => {
+    renderCselList();
+    updatePbar();
+    setTierInfo();
+    renderModalItems();
+    calcPreco();
+    document.getElementById('p-edit-idx').value = -1;
+    document.getElementById('btn-cart').textContent = '➕ Adicionar ao Pedido';
+    openModal('ov-calc');
+  }, 80);
+}
+
+function openEditClient(id) {
+  const c = clientes.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('ec-id').value    = id;
+  document.getElementById('ec-nome').value  = c.nome;
+  document.getElementById('ec-valor').value = c.precoServico;
+  document.getElementById('ec-meses').value = c.meses || 1;
+  const tipo = c.tipo || 'mensal';
+  document.getElementById('ec-tipo').value  = tipo;
+  document.querySelectorAll('#seg-ec-tipo button').forEach((b, i) =>
+    b.classList.toggle('active',
+      (i === 0 && tipo === 'mensal') || (i === 1 && tipo === 'projeto')
+    )
+  );
+  document.getElementById('ec-meses-g').style.display = tipo === 'mensal' ? 'block' : 'none';
+  openModal('ov-eclient');
+}
+
+function setECTipo(tipo, btn) {
+  document.getElementById('ec-tipo').value = tipo;
+  document.querySelectorAll('#seg-ec-tipo button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('ec-meses-g').style.display = tipo === 'mensal' ? 'block' : 'none';
+}
+
+function updateClient() {
+  const id    = document.getElementById('ec-id').value;
+  const nome  = document.getElementById('ec-nome').value.trim();
+  const valor = parseFloat(document.getElementById('ec-valor').value) || 0;
+  const tipo  = document.getElementById('ec-tipo').value;
+  const meses = parseInt(document.getElementById('ec-meses').value) || 1;
+  if (!nome) { toast('❌ Informe o nome'); return; }
+  const idx = clientes.findIndex(c => c.id === id);
+  if (idx < 0) return;
+  const adminVal = clientes[idx].taxaAdminVal || 0;
+  clientes[idx] = {
+    ...clientes[idx], nome, precoServico: valor,
+    precoTotal: valor + adminVal, tipo, meses,
+    data: new Date().toLocaleDateString('pt-BR'),
+  };
+  persist('td_clientes', clientes);
+  renderClients();
+  closeModal('ov-eclient');
+  toast('✅ Cliente atualizado');
+}
+
+function ecToCart() {
+  const id    = document.getElementById('ec-id').value;
+  const c     = clientes.find(x => x.id === id);
+  if (!c) return;
+  const nome  = document.getElementById('ec-nome').value.trim() || c.nome;
+  const valor = parseFloat(document.getElementById('ec-valor').value) || c.precoServico;
+  const tipo  = document.getElementById('ec-tipo').value;
+  const meses = parseInt(document.getElementById('ec-meses').value) || 1;
+  cart.push({
+    id: uid(), nomeServico: nome, tipo, meses,
+    margem: c.margem || 50, taxaCartao: c.taxaCartao || 0,
+    imposto: c.imposto || 0, desconto: c.desconto || 0,
+    descontoRec: c.descontoRec || 0, sobretaxaProj: c.sobretaxaProj || 0,
+    tier: c.tier || 'nenhum', itens: c.itens || [], midia: c.midia || null,
+    escopo: c.escopo || '', custoTotal: c.custoTotal || 0,
+    precoBase: valor, precoAjustado: valor, precoServico: valor,
+    taxaAdminVal: c.taxaAdminVal || 0, precoTotal: valor + (c.taxaAdminVal || 0),
+    lucro: c.lucro || 0, margemReal: c.margem || 50,
+  });
+  persist('td_cart', cart);
+  updCartBadge();
+  closeModal('ov-eclient');
+  toast('✅ Adicionado ao pedido');
+}
+
+// =============================================
+//  PWA
+// =============================================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () =>
     navigator.serviceWorker.register('./sw.js').catch(() => {})
   );
 }
+
+// =============================================
+//  INIT
+// =============================================
+function init() {
+  updCartBadge();
+  loadObs();
+  loadTierInputs();
+  renderCalc();
+  document.getElementById('pbar').style.display = 'flex';
+  // Mostrar regra default (mensal)
+  showRegraByTipo('mensal');
+}
+
+init();
