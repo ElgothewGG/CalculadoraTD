@@ -973,87 +973,72 @@ function renderContractPreview() {
   el.textContent = buildContractText();
 }
 
+
 function buildContractText() {
-  const data = fmtDate();
-  const obsLocal = document.getElementById('contract-obs')?.value || obs;
-
-  let txt = '';
-  txt += `PROPOSTA COMERCIAL\n`;
-  txt += `Two Dreamers — Marketing Digital\n`;
-  txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-  txt += `Data: ${data}\n`;
-  txt += `Validade da proposta: 15 dias\n\n`;
-
-  txt += `SERVIÇOS CONTRATADOS\n`;
-  txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-  cart.forEach((it, i) => {
-    const tipoLabel = it.tipo === 'mensal'
-      ? `Recorrente — ${it.meses} ${it.meses > 1 ? 'meses' : 'mês'}`
-      : 'Projeto único (valor fechado)';
-    txt += `${i + 1}. ${it.nomeServico}\n`;
-    txt += `   Tipo: ${tipoLabel}\n`;
+  var data = fmtDate();
+  var obsLocal = (document.getElementById('contract-obs') && document.getElementById('contract-obs').value) || obs;
+  var txt = '';
+  txt += 'PROPOSTA COMERCIAL\n';
+  txt += 'Two Dreamers -- Marketing Digital\n';
+  txt += '================================\n\n';
+  txt += 'Data: ' + data + '\n';
+  txt += 'Validade: 15 dias\n\n';
+  txt += 'SERVICOS CONTRATADOS\n';
+  txt += '================================\n\n';
+  cart.forEach(function(it, i) {
+    var tipoLabel = it.tipo === 'mensal'
+      ? ('Recorrente -- ' + it.meses + ' ' + (it.meses > 1 ? 'meses' : 'mes'))
+      : 'Projeto unico (valor fechado)';
+    txt += (i + 1) + '. ' + it.nomeServico + '\n';
+    txt += '   Tipo: ' + tipoLabel + '\n';
     if (it.tier && it.tier !== 'nenhum') {
-      const tl = { prata: 'Prata', ouro: 'Ouro', diamante: 'Diamante' }[it.tier];
-      txt += `   Tier do cliente: ${tl}\n`;
+      var tl = { prata: 'Prata', ouro: 'Ouro', diamante: 'Diamante' }[it.tier];
+      txt += '   Tier: ' + tl + '\n';
     }
     if (it.escopo) {
-      txt += `   Escopo:\n`;
-      it.escopo.split('\n').forEach(l => { txt += `     ${l}\n`; });
+      txt += '   Escopo:\n';
+      it.escopo.split('\n').forEach(function(l) { txt += '     ' + l + '\n'; });
     }
-
-    // Colaboradores alocados
-    const colabs = (it.itens || []).filter(x => {
-      const c = custos.find(cx => cx.id === x.id);
+    var colabs = (it.itens || []).filter(function(x) {
+      var c = custos.find(function(cx) { return cx.id === x.id; });
       return c && (c.categoria || 'colaborador') === 'colaborador' && c.tipo === 'hora';
     });
     if (colabs.length) {
-      txt += `   Equipe alocada:\n`;
-      colabs.forEach(x => {
-        const c = custos.find(cx => cx.id === x.id);
-        if (c) txt += `     • ${c.nome}: ${x.qtd}h ${it.tipo === 'mensal' ? '/mês' : 'no projeto'}\n`;
+      txt += '   Equipe:\n';
+      colabs.forEach(function(x) {
+        var c = custos.find(function(cx) { return cx.id === x.id; });
+        if (c) txt += '     * ' + c.nome + ': ' + x.qtd + 'h' + (it.tipo === 'mensal' ? '/mes' : ' no projeto') + '\n';
       });
     }
-
-    txt += `   Valor: ${fmt(it.precoServico)}\n`;
+    txt += '   Valor: ' + fmt(it.precoServico) + '\n';
     if (it.tipo === 'mensal' && it.meses > 1)
-      txt += `   Total do contrato (${it.meses} meses): ${fmt(it.precoServico * it.meses)}\n`;
+      txt += '   Total (' + it.meses + ' meses): ' + fmt(it.precoServico * it.meses) + '\n';
     if (it.midia && it.taxaAdminVal > 0) {
-      txt += `   + Gestão de mídia paga: ${fmt(it.taxaAdminVal)}/mês\n`;
-      txt += `     (Verba de ${fmt(it.midia.verba)}/mês gerida na conta do cliente)\n`;
+      txt += '   + Gestao de midia: ' + fmt(it.taxaAdminVal) + '/mes\n';
+      txt += '     (Verba ' + fmt(it.midia.verba) + '/mes na conta do cliente)\n';
     }
     txt += '\n';
   });
-
-  const totServ  = cart.reduce((s, x) => s + x.precoServico, 0);
-  const totAdmin = cart.reduce((s, x) => s + (x.taxaAdminVal || 0), 0);
-  const totGeral = cart.reduce((s, x) => s + x.precoTotal, 0);
-
-  txt += `INVESTIMENTO\n`;
-  txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  var totServ  = cart.reduce(function(s, x) { return s + x.precoServico; }, 0);
+  var totAdmin = cart.reduce(function(s, x) { return s + (x.taxaAdminVal || 0); }, 0);
+  var totGeral = cart.reduce(function(s, x) { return s + x.precoTotal; }, 0);
+  txt += 'INVESTIMENTO\n================================\n\n';
   if (totAdmin > 0) {
-    txt += `Subtotal de serviços: ${fmt(totServ)}\n`;
-    txt += `Gestão de mídia paga: ${fmt(totAdmin)}\n`;
+    txt += 'Subtotal servicos: ' + fmt(totServ) + '\n';
+    txt += 'Gestao de midia: ' + fmt(totAdmin) + '\n';
   }
-  txt += `TOTAL: ${fmt(totGeral)}\n\n`;
-
-  txt += `FORMAS DE PAGAMENTO\n`;
-  txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-  txt += `✅ PIX — sem acréscimo\n`;
-  txt += `✅ Boleto / transferência bancária — sem acréscimo\n`;
-  txt += `💳 Cartão de crédito — taxa operacional repassada ao contratante\n\n`;
-
-  if (obsLocal.trim()) {
-    txt += `OBSERVAÇÕES E CONDIÇÕES\n`;
-    txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+  txt += 'TOTAL: ' + fmt(totGeral) + '\n\n';
+  txt += 'FORMAS DE PAGAMENTO\n================================\n\n';
+  txt += 'PIX -- sem acrescimo\n';
+  txt += 'Boleto / transferencia -- sem acrescimo\n';
+  txt += 'Cartao -- taxa operacional repassada\n\n';
+  if (obsLocal && obsLocal.trim()) {
+    txt += 'OBSERVACOES\n================================\n\n';
     txt += obsLocal.trim() + '\n\n';
   }
-
-  txt += `ACEITE E ASSINATURA\n`;
-  txt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-  txt += `Two Dreamers: _________________________  Data: ___/___/______\n\n`;
-  txt += `Cliente: ______________________________  Data: ___/___/______\n`;
-
+  txt += 'ACEITE\n================================\n\n';
+  txt += 'Two Dreamers: _______________________  Data: ___/___/______\n\n';
+  txt += 'Cliente:      _______________________  Data: ___/___/______\n';
   return txt;
 }
 
@@ -1062,238 +1047,191 @@ function copyContract() {
 }
 
 function copyText(txt) {
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(txt).then(() => toast('📋 Copiado!'));
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(function() { toast('Copiado!'); });
   } else {
-    const ta = document.createElement('textarea');
+    var ta = document.createElement('textarea');
     ta.value = txt;
     ta.style.cssText = 'position:fixed;opacity:0';
     document.body.appendChild(ta);
     ta.select();
     document.execCommand('copy');
     document.body.removeChild(ta);
-    toast('📋 Copiado!');
+    toast('Copiado!');
   }
 }
 
-// =============================================
-//  SALVAR MODELO
-// =============================================
-
 function saveModel() {
-  const itens = Object.entries(sel).map(([id, qtd]) => ({ id, qtd }));
-  if (!itens.length) { toast('❌ Selecione ao menos um item'); return; }
-  const nome = prompt('Nome do modelo:');
-  if (!nome?.trim()) return;
-
-  const midiaOn = document.getElementById('p-midia').checked;
+  var itens = Object.entries(sel).map(function(e) { return { id: e[0], qtd: e[1] }; });
+  if (!itens.length) { toast('Selecione ao menos um item'); return; }
+  var nome = prompt('Nome do modelo:');
+  if (!nome || !nome.trim()) return;
+  var midiaOn = document.getElementById('p-midia').checked;
   modelos.push({
-    id: uid(), nome: nome.trim(), itens,
+    id: uid(), nome: nome.trim(), itens: itens,
     tipoMidia: midiaOn ? {
-      ativo:     true,
-      verba:     parseFloat(document.getElementById('p-verba').value)  || 0,
+      ativo: true,
+      verba: parseFloat(document.getElementById('p-verba').value) || 0,
       taxaAdmin: parseFloat(document.getElementById('p-tadmin').value) || 15,
     } : null,
     criadoEm: Date.now(),
   });
   persist('td_modelos', modelos);
-  toast(`✅ Modelo "${nome.trim()}" salvo`);
+  toast('Modelo "' + nome.trim() + '" salvo');
 }
 
-// =============================================
-//  SALVAR CLIENTE
-// =============================================
-
 function saveClient() {
-  const nome = document.getElementById('p-nome').value.trim();
-  if (!nome) { toast('❌ Informe o nome do cliente'); return; }
-
-  const p  = getParams();
-  const r  = computePreco(p);
-  const existing = clientes.find(c => c.nome.toLowerCase() === nome.toLowerCase());
-  const id = existing?.id || uid();
-
-  const data = {
-    id, nome,
-    tipo:          p.tipo, margem: Math.round(p.margem * 100),
-    taxaCartao:    Math.round(p.taxaCart  * 1000) / 10,
-    imposto:       Math.round(p.imposto   * 1000) / 10,
-    desconto:      Math.round(p.desconto  * 100),
-    descontoRec:   p.descontoRec,
-    sobretaxaProj: p.sobretaxaProj,
-    meses:         p.meses,
-    tier:          p.tier,
-    itens:         Object.entries(sel).map(([id, qtd]) => ({ id, qtd })),
-    midia:         p.midiaOn
-      ? { ativo: true, verba: p.verba, taxaAdmin: Math.round(p.taxaAdmin * 1000) / 10 }
-      : null,
-    escopo:        document.getElementById('p-escopo').value.trim(),
-    custoTotal:    p.custo,
-    precoServico:  r.precoServ,
-    taxaAdminVal:  r.adminVal,
-    precoTotal:    r.total,
-    lucro:         r.lucro,
-    data:          new Date().toLocaleDateString('pt-BR'),
-    criadoEm:      Date.now(),
+  var nome = document.getElementById('p-nome').value.trim();
+  if (!nome) { toast('Informe o nome do cliente'); return; }
+  var p = getParams();
+  var r = computePreco(p);
+  var existing = clientes.find(function(c) { return c.nome.toLowerCase() === nome.toLowerCase(); });
+  var id = existing ? existing.id : uid();
+  var data = {
+    id: id, nome: nome, tipo: p.tipo, margem: Math.round(p.margem * 100),
+    taxaCartao: Math.round(p.taxaCart * 1000) / 10,
+    imposto: Math.round(p.imposto * 1000) / 10,
+    desconto: Math.round(p.desconto * 100),
+    descontoRec: p.descontoRec, sobretaxaProj: p.sobretaxaProj,
+    meses: p.meses, tier: p.tier,
+    itens: Object.entries(sel).map(function(e) { return { id: e[0], qtd: e[1] }; }),
+    midia: p.midiaOn ? { ativo: true, verba: p.verba, taxaAdmin: Math.round(p.taxaAdmin * 1000) / 10 } : null,
+    escopo: document.getElementById('p-escopo').value.trim(),
+    custoTotal: p.custo, precoServico: r.precoServ, taxaAdminVal: r.adminVal,
+    precoTotal: r.total, lucro: r.lucro,
+    data: new Date().toLocaleDateString('pt-BR'), criadoEm: Date.now(),
   };
-
-  const idx = clientes.findIndex(c => c.id === id);
-  if (idx >= 0) { clientes[idx] = data; toast(`✅ "${nome}" atualizado`); }
-  else          { clientes.push(data);  toast(`✅ "${nome}" salvo`); }
+  var idx = clientes.findIndex(function(c) { return c.id === id; });
+  if (idx >= 0) { clientes[idx] = data; toast('"' + nome + '" atualizado'); }
+  else          { clientes.push(data);  toast('"' + nome + '" salvo'); }
   persist('td_clientes', clientes);
 }
 
-// =============================================
-//  ABA CLIENTES
-// =============================================
-
 function renderClients() {
-  const el = document.getElementById('clients-list');
+  var el = document.getElementById('clients-list');
   if (!clientes.length) {
-    el.innerHTML = `<div class="empty">
-      <div class="eic">👥</div>
-      <p>Nenhum cliente salvo ainda.<br>Calcule um preço e clique em "Salvar cliente".</p>
-    </div>`;
+    el.innerHTML = '<div class="empty"><div class="eic">👥</div><p>Nenhum cliente salvo ainda.</p></div>';
     return;
   }
-
-  el.innerHTML = clientes.map(c => {
-    const tierLabel = c.tier && c.tier !== 'nenhum'
-      ? `&nbsp;·&nbsp;<span class="tier-${c.tier}">${
-          { prata:'🥈 Prata', ouro:'🥇 Ouro', diamante:'💎 Diamante' }[c.tier]
-        }</span>` : '';
-    return `<div class="clcard">
-      <div class="clcard-hd">
-        <div class="clcard-name">${esc(c.nome)}</div>
-        <button class="btn btn-danger btn-sm" onclick="delClient('${c.id}')">🗑️</button>
-      </div>
-      <div class="clcard-meta">
-        ${c.data} &nbsp;·&nbsp;
-        ${c.tipo === 'mensal' ? `Mensal · ${c.meses} meses` : 'Projeto único'}
-        &nbsp;·&nbsp; Margem ${c.margem}%${tierLabel}
-      </div>
-      <div class="clcard-price">${fmt(c.precoTotal)}</div>
-      <div class="clcard-acts">
-        <button class="btn btn-outline btn-sm" onclick="recalcClient('${c.id}')">📊 Recalcular</button>
-        <button class="btn btn-ghost btn-sm" onclick="openEditClient('${c.id}')">✏️ Editar</button>
-      </div>
-    </div>`;
+  el.innerHTML = clientes.map(function(c) {
+    var tierLabel = (c.tier && c.tier !== 'nenhum')
+      ? ('&nbsp;&middot;&nbsp;<span class="tier-' + c.tier + '">' + ({ prata:'🥈 Prata', ouro:'🥇 Ouro', diamante:'💎 Diamante' }[c.tier] || '') + '</span>')
+      : '';
+    return '<div class="clcard">' +
+      '<div class="clcard-hd"><div class="clcard-name">' + esc(c.nome) + '</div>' +
+      '<button class="btn btn-danger btn-sm" onclick="delClient(\'' + c.id + '\')">🗑️</button></div>' +
+      '<div class="clcard-meta">' + (c.data || '') + '&nbsp;&middot;&nbsp;' +
+      (c.tipo === 'mensal' ? ('Mensal &middot; ' + (c.meses || 1) + ' meses') : 'Projeto unico') +
+      '&nbsp;&middot;&nbsp; Margem ' + (c.margem || 50) + '%' + tierLabel + '</div>' +
+      '<div class="clcard-price">' + fmt(c.precoTotal) + '</div>' +
+      '<div class="clcard-acts">' +
+      '<button class="btn btn-outline btn-sm" onclick="recalcClient(\'' + c.id + '\')">📊 Recalcular</button> ' +
+      '<button class="btn btn-ghost btn-sm" onclick="openEditClient(\'' + c.id + '\')">✏️ Editar</button>' +
+      '</div></div>';
   }).join('');
 }
 
 function delClient(id) {
-  clientes = clientes.filter(c => c.id !== id);
+  clientes = clientes.filter(function(c) { return c.id !== id; });
   persist('td_clientes', clientes);
   renderClients();
-  toast('🗑️ Cliente removido');
+  toast('Cliente removido');
 }
 
 function recalcClient(id) {
-  const c = clientes.find(x => x.id === id);
+  var c = clientes.find(function(x) { return x.id === id; });
   if (!c) return;
-
   sel = {};
-  (c.itens || []).forEach(it => { sel[it.id] = it.qtd; });
-
+  (c.itens || []).forEach(function(it) { sel[it.id] = it.qtd; });
   document.getElementById('p-nome').value    = c.nome;
   document.getElementById('p-margem').value  = c.margem || 50;
   document.getElementById('p-margem-d').textContent = (c.margem || 50) + '%';
   document.getElementById('p-cartao').value  = c.taxaCartao || 0;
-  document.getElementById('p-imposto').value = c.imposto    || 0;
-  document.getElementById('p-desc').value    = c.desconto   || 0;
+  document.getElementById('p-imposto').value = c.imposto || 0;
+  document.getElementById('p-desc').value    = c.desconto || 0;
   document.getElementById('p-desc-d').textContent = (c.desconto || 0) + '%';
-  document.getElementById('p-drec').value    = c.descontoRec   || 0;
+  document.getElementById('p-drec').value    = c.descontoRec || 0;
   document.getElementById('p-drec-d').textContent = (c.descontoRec || 0) + '%';
   document.getElementById('p-sproj').value   = c.sobretaxaProj || 0;
   document.getElementById('p-sproj-d').textContent = (c.sobretaxaProj || 0) + '%';
   document.getElementById('p-tier').value    = c.tier || 'nenhum';
   document.getElementById('p-escopo').value  = c.escopo || '';
-
-  const tipo = c.tipo || 'mensal';
-  document.getElementById('p-tipo').value    = tipo;
-  document.getElementById('p-meses').value   = c.meses || 1;
+  var tipo = c.tipo || 'mensal';
+  document.getElementById('p-tipo').value  = tipo;
+  document.getElementById('p-meses').value = c.meses || 1;
   document.getElementById('p-meses-g').style.display = tipo === 'mensal' ? 'block' : 'none';
   showRegraByTipo(tipo);
-
-  if (c.midia?.ativo) {
+  if (c.midia && c.midia.ativo) {
     document.getElementById('p-midia').checked = true;
-    document.getElementById('p-verba').value   = c.midia.verba    || 0;
+    document.getElementById('p-verba').value   = c.midia.verba || 0;
     document.getElementById('p-tadmin').value  = c.midia.taxaAdmin || 15;
     document.getElementById('midia-bloco').style.display = 'block';
   } else {
     document.getElementById('p-midia').checked = false;
     document.getElementById('midia-bloco').style.display = 'none';
   }
-
   switchTab('calcular');
-  setTimeout(() => {
-    renderCselList();
-    updatePbar();
-    setTierInfo();
-    renderModalItems();
-    calcPreco();
+  setTimeout(function() {
+    renderCselList(); updatePbar(); setTierInfo(); renderModalItems(); calcPreco();
     document.getElementById('p-edit-idx').value = -1;
-    document.getElementById('btn-cart').textContent = '➕ Adicionar ao Pedido';
+    document.getElementById('btn-cart').textContent = '+ Adicionar ao Pedido';
     openModal('ov-calc');
   }, 80);
 }
 
 function openEditClient(id) {
-  const c = clientes.find(x => x.id === id);
+  var c = clientes.find(function(x) { return x.id === id; });
   if (!c) return;
   document.getElementById('ec-id').value    = id;
   document.getElementById('ec-nome').value  = c.nome;
   document.getElementById('ec-valor').value = c.precoServico;
   document.getElementById('ec-meses').value = c.meses || 1;
-  const tipo = c.tipo || 'mensal';
-  document.getElementById('ec-tipo').value  = tipo;
-  document.querySelectorAll('#seg-ec-tipo button').forEach((b, i) =>
-    b.classList.toggle('active',
-      (i === 0 && tipo === 'mensal') || (i === 1 && tipo === 'projeto')
-    )
-  );
+  var tipo = c.tipo || 'mensal';
+  document.getElementById('ec-tipo').value = tipo;
+  document.querySelectorAll('#seg-ec-tipo button').forEach(function(b, i) {
+    b.classList.toggle('active', (i === 0 && tipo === 'mensal') || (i === 1 && tipo === 'projeto'));
+  });
   document.getElementById('ec-meses-g').style.display = tipo === 'mensal' ? 'block' : 'none';
   openModal('ov-eclient');
 }
 
 function setECTipo(tipo, btn) {
   document.getElementById('ec-tipo').value = tipo;
-  document.querySelectorAll('#seg-ec-tipo button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#seg-ec-tipo button').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
   document.getElementById('ec-meses-g').style.display = tipo === 'mensal' ? 'block' : 'none';
 }
 
 function updateClient() {
-  const id    = document.getElementById('ec-id').value;
-  const nome  = document.getElementById('ec-nome').value.trim();
-  const valor = parseFloat(document.getElementById('ec-valor').value) || 0;
-  const tipo  = document.getElementById('ec-tipo').value;
-  const meses = parseInt(document.getElementById('ec-meses').value) || 1;
-  if (!nome) { toast('❌ Informe o nome'); return; }
-  const idx = clientes.findIndex(c => c.id === id);
+  var id    = document.getElementById('ec-id').value;
+  var nome  = document.getElementById('ec-nome').value.trim();
+  var valor = parseFloat(document.getElementById('ec-valor').value) || 0;
+  var tipo  = document.getElementById('ec-tipo').value;
+  var meses = parseInt(document.getElementById('ec-meses').value) || 1;
+  if (!nome) { toast('Informe o nome'); return; }
+  var idx = clientes.findIndex(function(c) { return c.id === id; });
   if (idx < 0) return;
-  const adminVal = clientes[idx].taxaAdminVal || 0;
-  clientes[idx] = {
-    ...clientes[idx], nome, precoServico: valor,
-    precoTotal: valor + adminVal, tipo, meses,
-    data: new Date().toLocaleDateString('pt-BR'),
-  };
+  var adminVal = clientes[idx].taxaAdminVal || 0;
+  clientes[idx] = Object.assign({}, clientes[idx], {
+    nome: nome, precoServico: valor, precoTotal: valor + adminVal,
+    tipo: tipo, meses: meses, data: new Date().toLocaleDateString('pt-BR'),
+  });
   persist('td_clientes', clientes);
   renderClients();
   closeModal('ov-eclient');
-  toast('✅ Cliente atualizado');
+  toast('Cliente atualizado');
 }
 
 function ecToCart() {
-  const id    = document.getElementById('ec-id').value;
-  const c     = clientes.find(x => x.id === id);
+  var id    = document.getElementById('ec-id').value;
+  var c     = clientes.find(function(x) { return x.id === id; });
   if (!c) return;
-  const nome  = document.getElementById('ec-nome').value.trim() || c.nome;
-  const valor = parseFloat(document.getElementById('ec-valor').value) || c.precoServico;
-  const tipo  = document.getElementById('ec-tipo').value;
-  const meses = parseInt(document.getElementById('ec-meses').value) || 1;
+  var nome  = document.getElementById('ec-nome').value.trim() || c.nome;
+  var valor = parseFloat(document.getElementById('ec-valor').value) || c.precoServico;
+  var tipo  = document.getElementById('ec-tipo').value;
+  var meses = parseInt(document.getElementById('ec-meses').value) || 1;
   cart.push({
-    id: uid(), nomeServico: nome, tipo, meses,
+    id: uid(), nomeServico: nome, tipo: tipo, meses: meses,
     margem: c.margem || 50, taxaCartao: c.taxaCartao || 0,
     imposto: c.imposto || 0, desconto: c.desconto || 0,
     descontoRec: c.descontoRec || 0, sobretaxaProj: c.sobretaxaProj || 0,
@@ -1306,28 +1244,21 @@ function ecToCart() {
   persist('td_cart', cart);
   updCartBadge();
   closeModal('ov-eclient');
-  toast('✅ Adicionado ao pedido');
+  toast('Adicionado ao pedido');
 }
 
-// =============================================
-//  PWA
-// =============================================
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () =>
-    navigator.serviceWorker.register('./sw.js').catch(() => {})
-  );
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./sw.js').catch(function() {});
+  });
 }
 
-// =============================================
-//  INIT
-// =============================================
 function init() {
   updCartBadge();
   loadObs();
   loadTierInputs();
   renderCalc();
   document.getElementById('pbar').style.display = 'flex';
-  // Mostrar regra default (mensal)
   showRegraByTipo('mensal');
 }
 
